@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base theme; Compose draws the real UI, this is just the manifest fallback.
+         Values differ between night qualifier so Android can pick correctly. -->
+    <style name="Theme.NarcicTub" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@null</item>
+    </style>
+</resources>

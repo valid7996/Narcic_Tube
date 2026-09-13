@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android/IntelliJ
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Secrets — never commit
+keystore.properties
+*.jks
+*.keystore
+!gradle/wrapper/gradle-wrapper.jar
