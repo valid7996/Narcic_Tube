@@ -105,4 +105,17 @@ class HomeViewModelTest {
         vm.onClear()
         assertEquals(HomeUiState(), vm.uiState.value)
     }
+
+    // Double-resolve guard (Phase 4 review finding T1)
+    @Test
+    fun `second resolve while resolving is ignored`() = runTest {
+        val vm = HomeViewModel()
+        vm.onUrlChange("https://example.com/a")
+        vm.onResolve() // starts resolving (resolves after delay)
+        vm.onResolve() // must be a no-op while still resolving
+        advanceUntilIdle()
+        // Exactly one completion; state is consistent, not double-fired.
+        assertEquals("example.com", vm.uiState.value.resolvedHost)
+        assertFalse(vm.uiState.value.isResolving)
+    }
 }

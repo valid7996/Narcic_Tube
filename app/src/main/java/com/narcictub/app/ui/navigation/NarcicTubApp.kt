@@ -78,13 +78,3 @@ private fun NavHostController.navigateToTopLevel(destination: Destination) {
         restoreState = true
     }
 }
-
-/** Extracts the [Destination] a nav entry points at (helper for children). */
-fun androidx.navigation.NavDestination.destinationOf(): Destination? =
-    when {
-        hasRoute(Destination.Home::class) -> Destination.Home
-        hasRoute(Destination.Downloads::class) -> Destination.Downloads
-        hasRoute(Destination.History::class) -> Destination.History
-        hasRoute(Destination.Settings::class) -> Destination.Settings
-        else -> null
-    }
