@@ -15,7 +15,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
 import com.narcictub.app.ui.downloads.DownloadsScreen
 import com.narcictub.app.ui.history.HistoryScreen
 import com.narcictub.app.ui.home.HomeScreen
@@ -73,13 +72,11 @@ fun NarcicTubApp(
  * tab's own back stack and state.
  */
 private fun NavHostController.navigateToTopLevel(destination: Destination) {
-    val route = destination::class
-    val topLevelOptions = androidx.navigation.navOptions {
+    navigate(destination) {
         popUpTo(Destination.Home) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }
-    navigate(route) { topLevelOptions }
 }
 
 /** Extracts the [Destination] a nav entry points at (helper for children). */
