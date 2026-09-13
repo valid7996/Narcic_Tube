@@ -52,4 +52,12 @@ class HistoryRepositoryImpl @Inject constructor(
     override suspend fun clear() {
         dao.clear()
     }
+
+    override suspend fun updateLocalUri(id: Long, localUri: String) {
+        dao.updateLocalUri(id, localUri)
+    }
+
+    override suspend fun updateSizeBytes(id: Long, sizeBytes: Long) {
+        dao.updateSizeBytes(id, sizeBytes)
+    }
 }

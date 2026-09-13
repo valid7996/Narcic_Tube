@@ -5,9 +5,15 @@ import androidx.room.Room
 import com.narcictub.app.data.history.HistoryDao
 import com.narcictub.app.data.history.HistoryRepositoryImpl
 import com.narcictub.app.data.history.NarcicTubDatabase
+import com.narcictub.app.data.downloader.DownloadRepositoryImpl
+import com.narcictub.app.data.downloader.HttpUrlConnectionDownloader
+import com.narcictub.app.data.downloader.downloadWorkScope
 import com.narcictub.app.data.resolver.StubMediaResolver
+import kotlinx.coroutines.CoroutineScope
 import com.narcictub.app.data.settings.SettingsRepositoryImpl
 import com.narcictub.app.data.settings.settingsDataStore
+import com.narcictub.app.domain.downloader.FileDownloader
+import com.narcictub.app.domain.repository.DownloadRepository
 import com.narcictub.app.domain.repository.HistoryRepository
 import com.narcictub.app.domain.repository.SettingsRepository
 import com.narcictub.app.domain.resolver.MediaResolver
@@ -36,6 +42,11 @@ object DataModule {
     @Singleton
     fun provideSettingsDataStore(@ApplicationContext context: Context) =
         context.settingsDataStore
+
+    /** App-lifetime worker scope for download orchestration. */
+    @Provides
+    @Singleton
+    fun provideDownloadWorkScope(): CoroutineScope = downloadWorkScope()
 }
 
 @Module
@@ -50,4 +61,10 @@ abstract class DataBindsModule {
 
     @Binds
     abstract fun bindMediaResolver(impl: StubMediaResolver): MediaResolver
+
+    @Binds
+    abstract fun bindFileDownloader(impl: HttpUrlConnectionDownloader): FileDownloader
+
+    @Binds
+    abstract fun bindDownloadRepository(impl: DownloadRepositoryImpl): DownloadRepository
 }

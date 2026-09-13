@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
@@ -25,7 +26,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -38,8 +43,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.ui.theme.NarcicTubTheme
 
 /**
- * Home screen: URL input form with validation, paste support and a stub
- * resolve step. Real metadata fetching plugs into [HomeViewModel.onResolve].
+ * Home screen: URL input, validation feedback, resolve + queue-download
+ * actions. All business rules run in use cases; this is presentation only.
  */
 @Composable
 fun HomeScreen(
@@ -52,6 +57,8 @@ fun HomeScreen(
         onUrlChange = viewModel::onUrlChange,
         onClear = viewModel::onClear,
         onResolve = viewModel::onResolve,
+        onDownload = viewModel::onDownload,
+        onQueuedMessageShown = viewModel::onQueuedMessageShown,
         modifier = modifier,
     )
 }
@@ -62,9 +69,19 @@ private fun HomeContent(
     onUrlChange: (String) -> Unit,
     onClear: () -> Unit,
     onResolve: () -> Unit,
+    onDownload: () -> Unit,
+    onQueuedMessageShown: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
+    var queuedVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(state.queuedSuccessfully) {
+        if (state.queuedSuccessfully) {
+            queuedVisible = true
+            onQueuedMessageShown()
+        }
+    }
 
     Column(
         modifier = modifier
@@ -105,7 +122,7 @@ private fun HomeContent(
                 keyboardType = KeyboardType.Uri,
                 imeAction = ImeAction.Go,
             ),
-            keyboardActions = KeyboardActions(onGo = { onResolve() }),
+            keyboardActions = KeyboardActions(onGo = { onDownload() }),
         )
 
         Row(
@@ -114,25 +131,50 @@ private fun HomeContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedButton(
-                onClick = {
-                    clipboard.getText()?.text?.let(onUrlChange)
-                },
+                onClick = { clipboard.getText()?.text?.let(onUrlChange) },
             ) {
                 Icon(Icons.Filled.ContentPaste, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Paste")
             }
-            Button(
+            OutlinedButton(
                 onClick = onResolve,
                 enabled = state.isUrlValid && !state.isResolving,
-                modifier = Modifier.weight(1f),
             ) {
                 Text(if (state.isResolving) "Resolving…" else "Resolve")
+            }
+            Button(
+                onClick = onDownload,
+                enabled = state.isUrlValid && !state.isDownloading,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(Icons.Filled.Download, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(if (state.isDownloading) "Queuing…" else "Download")
             }
         }
 
         if (state.isResolving) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+
+        if (queuedVisible) {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = "Added to downloads",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = "Track it on the Downloads tab.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
 
         state.resolvedHost?.let { host ->
@@ -142,17 +184,12 @@ private fun HomeContent(
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
-                        text = "Ready to download",
+                        text = "Resolved",
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
                         text = host,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        text = "Full title, formats and quality picker land with the data layer.",
-                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -180,23 +217,26 @@ private fun HomeContentEmptyPreview() {
             onUrlChange = {},
             onClear = {},
             onResolve = {},
+            onDownload = {},
+            onQueuedMessageShown = {},
         )
     }
 }
 
 @Preview(showBackground = true)
 @Composable
-private fun HomeContentResolvedPreview() {
+private fun HomeContentActivePreview() {
     NarcicTubTheme {
         HomeContent(
             state = HomeUiState(
                 url = "https://example.com/watch?v=123",
                 isUrlValid = true,
-                resolvedHost = "example.com",
             ),
             onUrlChange = {},
             onClear = {},
             onResolve = {},
+            onDownload = {},
+            onQueuedMessageShown = {},
         )
     }
 }

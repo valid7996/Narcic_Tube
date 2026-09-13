@@ -26,4 +26,10 @@ interface HistoryRepository {
     suspend fun delete(id: Long)
 
     suspend fun clear()
+
+    /** Writes the final published content URI. Call only on success. */
+    suspend fun updateLocalUri(id: Long, localUri: String)
+
+    /** Writes the total downloaded size. Call only on success. */
+    suspend fun updateSizeBytes(id: Long, sizeBytes: Long)
 }

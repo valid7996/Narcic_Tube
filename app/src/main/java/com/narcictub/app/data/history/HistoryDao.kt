@@ -38,4 +38,10 @@ interface HistoryDao {
 
     @Query("DELETE FROM history")
     suspend fun clear()
+
+    @Query("UPDATE history SET local_uri = :localUri WHERE id = :id")
+    suspend fun updateLocalUri(id: Long, localUri: String)
+
+    @Query("UPDATE history SET size_bytes = :sizeBytes WHERE id = :id")
+    suspend fun updateSizeBytes(id: Long, sizeBytes: Long)
 }

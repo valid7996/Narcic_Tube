@@ -32,7 +32,7 @@ class HistoryRepositoryImplTest {
 
         override suspend fun insert(entity: HistoryEntity): Long {
             val id = if (entity.id != 0L) entity.id else nextId++
-            rows.value = rows.value.apply { removeAll { it.id == id }; add(entity.copy(id = id)) }
+            rows.value = rows.value.toMutableList().apply { removeAll { it.id == id }; add(entity.copy(id = id)) }
             return id
         }
 
@@ -55,6 +55,18 @@ class HistoryRepositoryImplTest {
 
         override suspend fun clear() {
             rows.value = mutableListOf()
+        }
+
+        override suspend fun updateLocalUri(id: Long, localUri: String) {
+            rows.value = rows.value.map {
+                if (it.id == id) it.copy(localUri = localUri) else it
+            }.toMutableList()
+        }
+
+        override suspend fun updateSizeBytes(id: Long, sizeBytes: Long) {
+            rows.value = rows.value.map {
+                if (it.id == id) it.copy(sizeBytes = sizeBytes) else it
+            }.toMutableList()
         }
     }
 
