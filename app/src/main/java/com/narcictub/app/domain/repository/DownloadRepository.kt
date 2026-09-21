@@ -29,6 +29,15 @@ interface DownloadRepository {
     suspend fun enqueue(sourceUrl: String, durationSeconds: Long? = null): Long
 
     /**
+     * Like [enqueue], but carries the REAL title the resolver found. Needed
+     * for provider media (YouTube/Instagram) whose URL has no meaningful file
+     * name ("watch", "p"). Implementations that don't care about titles keep
+     * the default, which simply ignores it.
+     */
+    suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long =
+        enqueue(sourceUrl, durationSeconds)
+
+    /**
      * User-initiated cancel of a queued or active download. Terminal rows
      * (COMPLETED) are never downgraded; see the implementation's L-1 guard.
      */

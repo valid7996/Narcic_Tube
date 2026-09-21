@@ -92,6 +92,12 @@ class HomeViewModelTest {
             enqueued.add(sourceUrl)
             return enqueued.size.toLong()
         }
+        /** Titles passed through enqueueTitled (provider media). */
+        val titles = mutableListOf<String?>()
+        override suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long {
+            titles.add(title)
+            return enqueue(sourceUrl, durationSeconds)
+        }
         override suspend fun cancel(id: Long) {}
         override suspend fun retry(id: Long): Long? = null
         override suspend fun remove(id: Long): Boolean = false
@@ -475,6 +481,76 @@ class HomeViewModelTest {
                 "there's no legitimate access path available to this app.",
             vm.uiState.value.errorMessage,
         )
+    }
+
+    @Test
+    fun `yt-dlp login-required failure maps to a cookies hint`() = runTest {
+        resolver.result = Result.failure(
+            MediaResolveException.ExtractionFailed(
+                com.narcictub.app.domain.model.MediaProvider.INSTAGRAM,
+                MediaResolveException.ExtractionFailed.Reason.LOGIN_REQUIRED,
+            ),
+        )
+        val vm = viewModel()
+        vm.onUrlChange("https://www.instagram.com/p/Cabc123/")
+        vm.onResolve()
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.resolvedMedia)
+        assertFalse(vm.uiState.value.canDownload)
+        assertEquals(
+            "Instagram asked for a login to show this link. " +
+                "Import your browser's cookies.txt in Settings and try again.",
+            vm.uiState.value.errorMessage,
+        )
+    }
+
+    @Test
+    fun `provider media is enqueued with its real title`() = runTest {
+        val pageUrl = "https://www.youtube.com/watch?v=abc123"
+        val variantUrl = "$pageUrl#nt-f=18"
+        resolver.result = Result.success(
+            MediaInfo(
+                sourceUrl = pageUrl,
+                title = "Sample video",
+                host = "www.youtube.com",
+                provider = com.narcictub.app.domain.model.MediaProvider.YOUTUBE,
+                variants = listOf(
+                    com.narcictub.app.domain.model.MediaVariant(
+                        downloadUrl = variantUrl,
+                        container = "mp4",
+                        height = 360,
+                        qualityLabel = "360p",
+                    ),
+                ),
+            ),
+        )
+        val vm = viewModel()
+        vm.onUrlChange(pageUrl)
+        vm.onResolve()
+        advanceUntilIdle()
+        assertTrue("the single variant is auto-selected", vm.uiState.value.canDownload)
+
+        vm.onDownload()
+        advanceUntilIdle()
+
+        assertEquals(listOf(variantUrl), downloadRepo.enqueued)
+        assertEquals(listOf<String?>("Sample video"), downloadRepo.titles)
+    }
+
+    @Test
+    fun `direct file media is still enqueued without a title`() = runTest {
+        resolver.result = Result.success(directFileInfo("https://example.com/clip.mp4"))
+        val vm = viewModel()
+        vm.onUrlChange("https://example.com/clip.mp4")
+        vm.onResolve()
+        advanceUntilIdle()
+
+        vm.onDownload()
+        advanceUntilIdle()
+
+        assertEquals(listOf("https://example.com/clip.mp4"), downloadRepo.enqueued)
+        assertTrue("direct links keep the plain enqueue path", downloadRepo.titles.isEmpty())
     }
 
     @Test

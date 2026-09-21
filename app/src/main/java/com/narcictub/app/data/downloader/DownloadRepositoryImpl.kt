@@ -108,11 +108,16 @@ open class DownloadRepositoryImpl @Inject constructor(
     override fun observeDownloads(): Flow<List<HistoryItem>> =
         historyRepository.observeHistory()
 
-    override suspend fun enqueue(sourceUrl: String, durationSeconds: Long?): Long {
+    override suspend fun enqueue(sourceUrl: String, durationSeconds: Long?): Long =
+        enqueueTitled(sourceUrl, durationSeconds, title = null)
+
+    override suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long {
         val id = historyRepository.add(
             HistoryItem(
                 sourceUrl = sourceUrl,
-                title = FileNameSanitizer.fromUrl(sourceUrl) ?: "download",
+                // A real resolver title (YouTube/Instagram) wins; direct links
+                // keep the URL-derived name exactly as before.
+                title = displayTitleFor(title) ?: FileNameSanitizer.fromUrl(sourceUrl) ?: "download",
                 status = DownloadStatus.QUEUED,
                 createdAt = Instant.now(),
                 // PHASE 22: the real resolved duration travels with the row.
@@ -162,7 +167,10 @@ open class DownloadRepositoryImpl @Inject constructor(
             val removed = deleteRowIfStatusMatches(id, setOf(DownloadStatus.FAILED, DownloadStatus.CANCELLED))
             if (!removed) return null
             // PHASE 22: retry preserves the real duration the row carried.
-            return enqueue(item.sourceUrl, item.durationSeconds)
+            // Provider rows keep their real title; direct-link rows (whose title
+            // is just the URL's file name) re-derive it exactly as before.
+            val keptTitle = item.title.takeIf { it != FileNameSanitizer.fromUrl(item.sourceUrl) }
+            return enqueueTitled(item.sourceUrl, item.durationSeconds, keptTitle)
         } finally {
             synchronized(this) { retryingIds.remove(id) }
         }
@@ -375,7 +383,9 @@ open class DownloadRepositoryImpl @Inject constructor(
             // row lands COMPLETED. Cancellation during the network stream
             // (before this block) still yields CANCELLED + staging cleanup.
             withContext(NonCancellable) {
-                val displayName = item.fileName ?: item.title
+                // yt-dlp decides the container, so its extension is appended to
+                // the (extension-less) title; plain downloads are unchanged.
+                val displayName = withExtension(item.fileName ?: item.title, result.fileExtension)
                 val published = mediaStoreWriter.publish(
                     stagingFile = stagingFile,
                     displayName = displayName,
@@ -424,6 +434,26 @@ open class DownloadRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Turns a resolver title into a safe, length-capped display title. Path
+     * separators become dashes (a title like "AC/DC live" must not lose its
+     * head); null when nothing usable remains. The cap leaves room for the
+     * extension so the 120-char file-name limit can never cut it off.
+     */
+    private fun displayTitleFor(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val cleaned = raw.replace('/', '-').replace('\\', '-')
+        return FileNameSanitizer.sanitize(cleaned, fallback = "")
+            .take(MAX_TITLE_LENGTH)
+            .trim()
+            .takeIf { it.isNotEmpty() }
+    }
+
+    private fun withExtension(name: String, extension: String?): String {
+        if (extension.isNullOrBlank()) return name
+        return if (name.endsWith(".$extension", ignoreCase = true)) name else "$name.$extension"
+    }
+
     /** Root of the shared staging directory. Overridable for tests. */
     protected open fun stagingRoot(): File = File(context.cacheDir, STAGING_DIR)
 
@@ -432,6 +462,7 @@ open class DownloadRepositoryImpl @Inject constructor(
 
     companion object {
         private const val STAGING_DIR = "downloads"
+        private const val MAX_TITLE_LENGTH = 100
         const val RECOVERED_MESSAGE = "Interrupted by app restart"
     }
 }

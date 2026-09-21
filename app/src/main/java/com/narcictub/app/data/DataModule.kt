@@ -6,14 +6,14 @@ import com.narcictub.app.data.history.HistoryDao
 import com.narcictub.app.data.history.HistoryRepositoryImpl
 import com.narcictub.app.data.history.NarcicTubDatabase
 import com.narcictub.app.data.downloader.DownloadRepositoryImpl
-import com.narcictub.app.data.downloader.HttpUrlConnectionDownloader
+import com.narcictub.app.data.downloader.RoutingFileDownloader
 import com.narcictub.app.data.downloader.downloadWorkScope
 import com.narcictub.app.data.local.MediaUriSafety
 import com.narcictub.app.data.player.MediaPlayerEngine
+import com.narcictub.app.data.ytdlp.YtDlpExtractor
 import com.narcictub.app.data.resolver.DirectMediaExtractor
 import com.narcictub.app.data.resolver.DirectMediaResolver
 import com.narcictub.app.data.resolver.ExtractorRegistryMediaResolver
-import com.narcictub.app.data.resolver.InstagramExtractor
 import kotlinx.coroutines.CoroutineScope
 import com.narcictub.app.data.settings.SettingsRepositoryImpl
 import com.narcictub.app.data.settings.settingsDataStore
@@ -92,13 +92,14 @@ abstract class DataBindsModule {
     @IntoSet
     abstract fun bindDirectMediaExtractor(impl: DirectMediaExtractor): MediaExtractor
 
-    /** PHASE 19: Instagram intake — honest typed routing, zero network. */
+    /** YouTube + Instagram via yt-dlp (replaces the old Instagram stub). */
     @Binds
     @IntoSet
-    abstract fun bindInstagramExtractor(impl: InstagramExtractor): MediaExtractor
+    abstract fun bindYtDlpExtractor(impl: YtDlpExtractor): MediaExtractor
 
+    /** Routes YouTube/Instagram to yt-dlp and everything else to the HTTP downloader. */
     @Binds
-    abstract fun bindFileDownloader(impl: HttpUrlConnectionDownloader): FileDownloader
+    abstract fun bindFileDownloader(impl: RoutingFileDownloader): FileDownloader
 
     @Binds
     abstract fun bindDownloadRepository(impl: DownloadRepositoryImpl): DownloadRepository

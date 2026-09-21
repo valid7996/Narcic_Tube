@@ -9,4 +9,6 @@
 -->
 <full-backup-content>
     <exclude domain="database" />
+    <!-- Imported browser cookies (login sessions) must never leave the device. -->
+    <exclude domain="file" path="ytdlp/" />
 </full-backup-content>

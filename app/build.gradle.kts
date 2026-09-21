@@ -41,6 +41,12 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // yt-dlp + Python + ffmpeg ship as native code per ABI. Dropping the
+        // x86 (32-bit) emulator ABI keeps the APK from growing further.
+        ndk {
+            abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
+        }
     }
 
     signingConfigs {
@@ -98,6 +104,12 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // youtubedl-android launches Python / yt-dlp / ffmpeg as real
+        // executables, so the native libraries must be extracted to disk
+        // (the Gradle equivalent of android:extractNativeLibs="true").
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 
     testOptions {
@@ -143,6 +155,12 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
+
+    // yt-dlp for Android: YouTube / Instagram extraction + downloading.
+    // Bundles Python + yt-dlp (GPL-3.0 — see README "Licensing") and ffmpeg
+    // (needed to merge separate video + audio streams).
+    implementation(libs.youtubedl.library)
+    implementation(libs.youtubedl.ffmpeg)
 
     // Unit tests
     testImplementation(libs.junit)

@@ -1,6 +1,7 @@
 package com.narcictub.app
 
 import android.app.Application
+import com.narcictub.app.data.ytdlp.YtDlpEngine
 import com.narcictub.app.domain.usecase.RecoverInterruptedDownloadsUseCase
 import com.narcictub.app.notify.DownloadNotificationController
 import dagger.hilt.android.HiltAndroidApp
@@ -31,10 +32,16 @@ class NarcicTubApplication : Application() {
 
     @Inject lateinit var downloadNotifications: DownloadNotificationController
 
+    // yt-dlp / Python / ffmpeg runtime for YouTube + Instagram.
+    @Inject lateinit var ytDlpEngine: YtDlpEngine
+
     override fun onCreate() {
         super.onCreate()
         DownloadNotificationController.ensureChannel(this)
         downloadWorkScope.launch { recoverInterrupted() }
         downloadNotifications.start()
+        // Extract the bundled runtime and refresh yt-dlp in the background so
+        // the first YouTube/Instagram request isn't the one that pays for it.
+        downloadWorkScope.launch { ytDlpEngine.warmUp() }
     }
 }

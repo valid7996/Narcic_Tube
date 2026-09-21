@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.narcictub.app.domain.NetworkDestinationPolicy
 import com.narcictub.app.domain.UrlValidator
+import com.narcictub.app.domain.model.MediaProvider
 import com.narcictub.app.domain.model.MediaVariant
 import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
@@ -182,7 +183,13 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             // PHASE 22: the selected variant's real duration persists with
             // the download row so the library can show it honestly.
-            val result = enqueueDownload(variant.downloadUrl, variant.durationSeconds)
+            // Provider media (YouTube/Instagram) has no file name in its URL, so
+            // the resolver's real title travels with the download. Direct links
+            // keep the exact previous call (no title).
+            val providerTitle = state.resolvedMedia
+                ?.takeIf { it.provider != MediaProvider.UNKNOWN }
+                ?.title
+            val result = enqueueDownload(variant.downloadUrl, variant.durationSeconds, providerTitle)
             _uiState.update { current ->
                 result.fold(
                     onSuccess = { current.copy(isDownloading = false, queuedSuccessfully = true) },
@@ -243,6 +250,24 @@ class HomeViewModel @Inject constructor(
             // retrieval path exists — the honest message, no "Download failed".
             "Content from ${error.provider.displayName} can't be retrieved yet — " +
                 "there's no legitimate access path available to this app."
+        is MediaResolveException.ExtractionFailed -> when (error.reason) {
+            MediaResolveException.ExtractionFailed.Reason.LOGIN_REQUIRED ->
+                "${error.provider.displayName} asked for a login to show this link. " +
+                    "Import your browser's cookies.txt in Settings and try again."
+            MediaResolveException.ExtractionFailed.Reason.UNAVAILABLE ->
+                "This media is private, removed, or blocked in your region."
+            MediaResolveException.ExtractionFailed.Reason.NO_MEDIA ->
+                "No downloadable video was found at this link."
+            MediaResolveException.ExtractionFailed.Reason.RATE_LIMITED ->
+                "${error.provider.displayName} is limiting requests right now. Try again in a while."
+            MediaResolveException.ExtractionFailed.Reason.NETWORK ->
+                "Couldn't reach ${error.provider.displayName}. Check your connection and try again."
+            MediaResolveException.ExtractionFailed.Reason.ENGINE_UNAVAILABLE ->
+                "The download engine couldn't start. Restart the app and try again."
+            MediaResolveException.ExtractionFailed.Reason.OTHER ->
+                "Couldn't read this ${error.provider.displayName} link. The site may have changed — " +
+                    "restart the app so the engine can update, then try again."
+        }
         is MediaResolveException.Http ->
             "The source server answered with an error (HTTP ${error.statusCode})."
         is MediaResolveException.Network ->

@@ -4,6 +4,12 @@ import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaProvider
 import com.narcictub.app.domain.resolver.MediaExtractor
 import com.narcictub.app.domain.resolver.MediaResolveException
+import com.narcictub.app.data.ytdlp.YtDlpEngine
+import com.narcictub.app.data.ytdlp.YtDlpExtractor
+import com.narcictub.app.data.ytdlp.YtDlpSamples
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -104,48 +110,46 @@ class ExtractorRegistryMediaResolverTest {
         assertTrue(result.exceptionOrNull() is MediaResolveException.UnsupportedSource)
     }
 
-    // ===== Phase 19: real Instagram extractor routing =====
+    // ===== yt-dlp extractor routing (YouTube + Instagram) =====
 
     @Test
-    fun `instagram urls route to the instagram extractor by priority`() = runTest {
-        val instagram = InstagramExtractor()
-        val direct = FakeExtractor("instagram", Result.success(info("instagram.com")))
+    fun `youtube urls route to the yt-dlp extractor by priority`() = runTest {
+        val engine = mockk<YtDlpEngine>()
+        coEvery { engine.dumpJson(any()) } returns YtDlpSamples.YOUTUBE
+        val direct = FakeExtractor("youtube", Result.success(info("youtube.com")))
         // Registration order deliberately reversed: priority (100 > 0) must
-        // make the Instagram extractor win regardless of registration order.
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(direct, instagram))
+        // make the yt-dlp extractor win regardless of registration order.
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(direct, YtDlpExtractor(engine)))
 
-        val result = registry.resolve("https://www.instagram.com/p/Cabc123/")
+        val result = registry.resolve("https://www.youtube.com/watch?v=abc123")
 
-        val error = result.exceptionOrNull()
-        assertTrue(
-            "expected ExtractionUnavailable from the Instagram extractor, got $error",
-            error is MediaResolveException.ExtractionUnavailable,
-        )
-        assertEquals(MediaProvider.INSTAGRAM, (error as MediaResolveException.ExtractionUnavailable).provider)
-        assertEquals("the direct intake must never claim Instagram URLs", 0, direct.claimed.size)
+        assertTrue("expected success, got ${result.exceptionOrNull()}", result.isSuccess)
+        assertEquals(MediaProvider.YOUTUBE, result.getOrNull()!!.provider)
+        assertEquals("the direct intake must never claim YouTube URLs", 0, direct.claimed.size)
     }
 
     @Test
-    fun `instagram urls never fall through to the direct-media intake`() = runTest {
-        val instagram = InstagramExtractor()
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(instagram))
+    fun `instagram urls route to the yt-dlp extractor`() = runTest {
+        val engine = mockk<YtDlpEngine>()
+        coEvery { engine.dumpJson(any()) } returns YtDlpSamples.YOUTUBE
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine)))
 
-        val error = registry.resolve("https://instagram.com/p/Cabc123/").exceptionOrNull()
+        val result = registry.resolve("https://www.instagram.com/reel/Cabc123/")
 
-        assertTrue(error is MediaResolveException.ExtractionUnavailable)
-        assertEquals(MediaProvider.INSTAGRAM, (error as MediaResolveException.ExtractionUnavailable).provider)
+        assertTrue(result.isSuccess)
+        assertEquals(MediaProvider.INSTAGRAM, result.getOrNull()!!.provider)
     }
 
     @Test
-    fun `youtube urls are not claimed by the instagram extractor`() = runTest {
-        val instagram = InstagramExtractor()
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(instagram))
+    fun `other hosts never reach the yt-dlp extractor`() = runTest {
+        val engine = mockk<YtDlpEngine>()
+        coEvery { engine.dumpJson(any()) } returns YtDlpSamples.YOUTUBE
+        val direct = FakeExtractor("example.com", Result.success(info("example.com")))
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine), direct))
 
-        val error = registry.resolve("https://youtube.com/watch?v=1").exceptionOrNull()
+        val result = registry.resolve("https://cdn.example.com/clip.mp4")
 
-        // Still the honest YouTube routing from Phase 17/18 — no
-        // cross-provider claim by the Instagram extractor.
-        assertTrue(error is MediaResolveException.UnsupportedProvider)
-        assertEquals(MediaProvider.YOUTUBE, (error as MediaResolveException.UnsupportedProvider).provider)
+        assertTrue(result.isSuccess)
+        coVerify(exactly = 0) { engine.dumpJson(any()) }
     }
 }

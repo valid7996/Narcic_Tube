@@ -1,5 +1,7 @@
 package com.narcictub.app.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
+import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
@@ -25,21 +28,29 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.narcictub.app.data.ytdlp.YtDlpCookies
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * PHASE 13 — Settings: Appearance (theme), Downloads (location + concurrent
@@ -103,6 +114,9 @@ fun SettingsScreen(
                 value = state.concurrentDownloads,
                 onSelect = viewModel::onConcurrentDownloadsSelected,
             )
+
+            SectionHeader("YouTube & Instagram login (optional)")
+            LoginCookiesSection()
 
             Spacer(Modifier.height(16.dp))
         }
@@ -210,6 +224,64 @@ private fun ConcurrentDownloadsSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+}
+
+/**
+ * Optional login session for yt-dlp. Some Instagram posts and age-restricted
+ * or bot-checked YouTube videos can only be fetched by a logged-in browser;
+ * importing that browser's cookies.txt (Netscape format) lets the downloader
+ * do the same. The file stays in app-private storage and is never backed up.
+ */
+@Composable
+private fun LoginCookiesSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var hasCookies by remember { mutableStateOf(YtDlpCookies.exists(context)) }
+    var status by remember { mutableStateOf<String?>(null) }
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val imported = withContext(Dispatchers.IO) { YtDlpCookies.import(context, uri) }
+                hasCookies = YtDlpCookies.exists(context)
+                status = if (imported) {
+                    "Cookies imported."
+                } else {
+                    "That file doesn't look like a cookies.txt (Netscape format)."
+                }
+            }
+        }
+    }
+
+    Text(
+        text = "Export your browser cookies to a cookies.txt file and import it here. " +
+            "It stays on this device and is only used for YouTube and Instagram downloads.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Button(onClick = { picker.launch(arrayOf("*/*")) }) {
+            Text(if (hasCookies) "Replace cookies.txt" else "Import cookies.txt")
+        }
+        if (hasCookies) {
+            TextButton(
+                onClick = {
+                    YtDlpCookies.clear(context)
+                    hasCookies = false
+                    status = "Cookies removed."
+                },
+            ) {
+                Text("Remove")
+            }
+        }
+    }
+    status?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 @Composable

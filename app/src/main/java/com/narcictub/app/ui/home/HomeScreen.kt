@@ -197,7 +197,7 @@ private fun HomeContent(
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         } else if (state.isUrlValid && state.resolvedMedia == null && state.errorMessage == null) {
             Text(
-                text = "Resolve the link first — downloads work for direct media files.",
+                text = "Paste a YouTube, Instagram or direct media link, then resolve it.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -10,6 +10,12 @@ import java.io.File
 data class DownloadFileResult(
     val bytesDownloaded: Long,
     val contentType: String? = null,
+    /**
+     * Real file extension (without dot) when the transport itself decides the
+     * container — e.g. yt-dlp producing mp4/m4a/webm. Null for plain HTTP
+     * downloads, whose display name already comes from the URL.
+     */
+    val fileExtension: String? = null,
 )
 
 /**
@@ -39,4 +45,7 @@ sealed class DownloadException(message: String, cause: Throwable? = null) : Exce
     class Http(val statusCode: Int) : DownloadException("HTTP error $statusCode")
     class Io(cause: Throwable) : DownloadException("File error during download", cause)
     class Policy(message: String) : DownloadException(message)
+
+    /** yt-dlp (YouTube/Instagram) could not download; [message] is a fixed, safe sentence. */
+    class Extraction(message: String) : DownloadException(message)
 }

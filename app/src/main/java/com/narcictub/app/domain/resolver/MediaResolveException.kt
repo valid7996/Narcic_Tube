@@ -34,6 +34,30 @@ sealed class MediaResolveException(message: String, cause: Throwable? = null) :
     class ExtractionUnavailable(val provider: com.narcictub.app.domain.model.MediaProvider) :
         MediaResolveException("extraction is unavailable for this provider")
 
+    /**
+     * The provider extractor (yt-dlp) ran but could not produce downloadable
+     * media. [reason] is a coarse, SAFE classification — never raw tool
+     * output, URLs or cookies — that the ViewModel maps to user wording.
+     */
+    class ExtractionFailed(
+        val provider: com.narcictub.app.domain.model.MediaProvider,
+        val reason: Reason,
+    ) : MediaResolveException("extraction failed: ${reason.name}") {
+        enum class Reason {
+            /** The provider wants a logged-in session (private/age-gated/anti-bot). */
+            LOGIN_REQUIRED,
+            /** Private, removed, geo-blocked or otherwise unavailable media. */
+            UNAVAILABLE,
+            /** The page exists but holds no downloadable video/audio. */
+            NO_MEDIA,
+            RATE_LIMITED,
+            NETWORK,
+            /** The bundled yt-dlp/Python/ffmpeg runtime failed to start. */
+            ENGINE_UNAVAILABLE,
+            OTHER,
+        }
+    }
+
     /** The source server answered with an HTTP error status. */
     class Http(val statusCode: Int) :
         MediaResolveException("source server returned HTTP $statusCode")

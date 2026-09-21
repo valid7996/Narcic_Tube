@@ -23,7 +23,11 @@ import javax.inject.Inject
 class EnqueueDownloadUseCase @Inject constructor(
     private val repository: DownloadRepository,
 ) {
-    suspend operator fun invoke(url: String, durationSeconds: Long? = null): Result<Long> {
+    suspend operator fun invoke(
+        url: String,
+        durationSeconds: Long? = null,
+        title: String? = null,
+    ): Result<Long> {
         val message = UrlValidator.validationMessage(url)
         if (message != null) {
             return Result.failure(InvalidUrlException(message))
@@ -37,7 +41,14 @@ class EnqueueDownloadUseCase @Inject constructor(
             )
         }
         return try {
-            Result.success(repository.enqueue(normalized, durationSeconds))
+            // A real resolver title (provider media) is passed through; plain
+            // direct links keep the exact pre-existing enqueue call.
+            val id = if (title != null) {
+                repository.enqueueTitled(normalized, durationSeconds, title)
+            } else {
+                repository.enqueue(normalized, durationSeconds)
+            }
+            Result.success(id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
