@@ -27,9 +27,19 @@ interface HistoryRepository {
 
     suspend fun clear()
 
+    /** Deletes all rows whose status is in [statuses]. */
+    suspend fun deleteByStatuses(statuses: Set<DownloadStatus>)
+
     /** Writes the final published content URI. Call only on success. */
     suspend fun updateLocalUri(id: Long, localUri: String)
 
     /** Writes the total downloaded size. Call only on success. */
     suspend fun updateSizeBytes(id: Long, sizeBytes: Long)
+
+    /**
+     * PHASE 10: writes the server-declared MIME type observed at completion
+     * so history can show the real format. Null stays null — unknown type is
+     * never replaced by a guess.
+     */
+    suspend fun updateMimeType(id: Long, mimeType: String?)
 }

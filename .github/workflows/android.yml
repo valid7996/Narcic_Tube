@@ -1,0 +1,173 @@
+# NarcicTub Android CI — Phase 15.
+# Runs the unit test suite, builds the debug APK, and uploads it as an
+# artifact. No signing, no publishing, no secrets (release belongs to a
+# later phase).
+name: Android CI
+
+on:
+  push:
+    branches: [main]
+    # PHASE 16: version tags drive the signed release job below.
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [main]
+  # PHASE 16: manual run for release validation. The release job still only
+  # produces artifacts — nothing is published to GitHub Releases/Play.
+  workflow_dispatch:
+
+# Least privilege: the workflow only ever reads the repository. No write
+# scopes exist, so even a compromised step cannot mutate repo state.
+permissions:
+  contents: read
+
+# One run per ref: a new push to the same branch cancels the superseded run.
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Fixed shell for every run step — no dynamic command construction anywhere.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Test & build debug APK
+    # Pinned runner image (no floating "latest") for reproducible tooling.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        # Official action, pinned to a major version tag. Commit-SHA pinning
+        # is the recommended hardening follow-up (see Phase 15 report).
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        # Official Gradle action: verifies gradle-wrapper.jar checksums.
+        uses: gradle/actions/wrapper-validation@v3
+
+      - name: Set up JDK 17 (Temurin)
+        # Project toolchain: build.gradle.kts targets Java 17 (AGP 8.5.2).
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle caching
+        # Official Gradle action: caches dependencies + build outputs.
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Cache poisoning guard: pull-request runs RESTORE caches but
+          # never SAVE them; only pushes to main write caches.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Make Gradle wrapper executable
+        # gradlew is committed without the executable bit (Windows checkout).
+        run: chmod +x gradlew
+
+      - name: Run unit tests
+        # Test failure fails the workflow — no error swallowing anywhere.
+        run: ./gradlew test
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NarcicTub-debug-apk
+          # Exact known build output only — never the workspace, .gradle,
+          # .git, local.properties or any keystore (none exists in-repo).
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Signed release APK & AAB
+    # PHASE 16: tag-based release builds (v*.*.*) — plain pushes/PRs never
+    # run this job, so signing secrets can never reach PR code. It runs
+    # after the debug smoke build and produces signed APK + AAB artifacts.
+    # Nothing is published to GitHub Releases or Google Play here.
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v3
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle caching
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          # Tag pushes come from the trusted ref — caches may be saved.
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      # Honest secret handling: if any signing secret is missing, fail with
+      # an actionable message instead of producing an unsigned artifact that
+      # could be mistaken for a signed release.
+      - name: Verify signing secrets are present
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=0
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Release secret '${name}' is not configured in the repository settings - cannot produce a signed release."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Restore release keystore from secret
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          # Decoded ONLY into the runner's temp dir: never the workspace
+          # (so it can never be uploaded), never printed, never committed.
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/narcictub-release.keystore"
+          chmod 600 "$RUNNER_TEMP/narcictub-release.keystore"
+
+      - name: Build signed release APK and AAB
+        env:
+          NARCIC_TUB_KEYSTORE_PATH: ${{ runner.temp }}/narcictub-release.keystore
+          NARCIC_TUB_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          NARCIC_TUB_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          NARCIC_TUB_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease bundleRelease
+
+      - name: Generate SHA-256 checksums
+        run: |
+          sha256sum app/build/outputs/apk/release/app-release.apk \
+                    app/build/outputs/bundle/release/app-release.aab \
+            > app/build/outputs/SHA256SUMS.txt
+          cat app/build/outputs/SHA256SUMS.txt
+
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/narcictub-release.keystore"
+
+      - name: Upload signed release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NarcicTub-release-${{ github.ref_name }}
+          path: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14

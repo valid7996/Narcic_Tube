@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import com.narcictub.app.domain.model.ThemeMode
 
 private val DarkColors = darkColorScheme(
     primary = BrandPrimary,
@@ -58,4 +59,15 @@ fun NarcicTubTheme(
         typography = NarcicTubTypography,
         content = content,
     )
+}
+
+/**
+ * PHASE 13: resolves the user's persisted [ThemeMode] against the system
+ * setting. Pure and unit-tested; the persisted mode is the single source of
+ * truth — no duplicated theme state anywhere.
+ */
+internal fun ThemeMode.resolveDarkTheme(systemDark: Boolean): Boolean = when (this) {
+    ThemeMode.SYSTEM -> systemDark
+    ThemeMode.DARK -> true
+    ThemeMode.LIGHT -> false
 }

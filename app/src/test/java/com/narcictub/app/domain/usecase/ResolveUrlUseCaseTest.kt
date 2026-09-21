@@ -1,8 +1,8 @@
 package com.narcictub.app.domain.usecase
 
 import com.narcictub.app.domain.model.MediaInfo
+import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.resolver.MediaResolver
-import com.narcictub.app.domain.resolver.ResolverNotImplementedException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -12,9 +12,12 @@ class ResolveUrlUseCaseTest {
 
     private class RecordingResolver : MediaResolver {
         val received = mutableListOf<String>()
+        var nextResult: Result<MediaInfo> =
+            Result.failure(MediaResolveException.UnsupportedSource())
+
         override suspend fun resolve(url: String): Result<MediaInfo> {
             received.add(url)
-            return Result.failure(ResolverNotImplementedException())
+            return nextResult
         }
     }
 
@@ -53,11 +56,33 @@ class ResolveUrlUseCaseTest {
     }
 
     @Test
-    fun `resolver failure propagates as-is`() = runTest {
-        val useCase = ResolveUrlUseCase(RecordingResolver())
+    fun `typed resolver failure propagates as-is`() = runTest {
+        val resolver = RecordingResolver()
+        resolver.nextResult = Result.failure(MediaResolveException.UnsupportedSource())
+        val useCase = ResolveUrlUseCase(resolver)
 
         val result = useCase("https://example.com/watch?v=1")
 
-        assertTrue(result.exceptionOrNull() is ResolverNotImplementedException)
+        assertTrue(result.exceptionOrNull() is MediaResolveException.UnsupportedSource)
+    }
+
+    @Test
+    fun `successful resolution passes metadata through unchanged`() = runTest {
+        val info = MediaInfo(
+            sourceUrl = "https://example.com/clip.mp4",
+            title = "clip.mp4",
+            host = "example.com",
+            mimeType = "video/mp4",
+            sizeBytes = 1024L,
+            isDirectFile = true,
+            downloadUrl = "https://example.com/clip.mp4",
+        )
+        val resolver = RecordingResolver()
+        resolver.nextResult = Result.success(info)
+        val useCase = ResolveUrlUseCase(resolver)
+
+        val result = useCase("https://example.com/clip.mp4")
+
+        assertEquals(info, result.getOrNull())
     }
 }

@@ -1,12 +1,9 @@
 package com.narcictub.app.data.local
 
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import android.provider.MediaStore
 import com.narcictub.app.domain.FileNameSanitizer
-import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,16 +15,26 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Moves a fully-downloaded staging file into MediaStore and returns the
- * persistent content URI. Appends to shared collections only via
- * MediaStore.Downloads (or the user-configured collection on Android 10+).
+ * Publishes a fully-downloaded staging file into persistent storage and
+ * returns a stable URI for the history row.
  *
- * Safety properties:
- *  - DISPLAY_NAME passes through FileNameSanitizer (no traversal)
- *  - IS_PENDING=1 while copying; cleared only after the stream is flushed —
- *    a partial file is never exposed as a completed download
- *  - on failure the pending entry is deleted
- *  - no storage permission needed (scoped storage, app-contributed entries)
+ * API SPLIT (review H-1): API 26–28 and API 29+ take completely separate
+ * implementations, selected by [deviceSdkInt]:
+ *  - API 29+  → [QPlusMediaStorePublisher]: the platform's shared
+ *    downloads/audio/video/images collections with the pending flag, so a
+ *    partial file is never exposed as a finished download.
+ *  - API 26–28 → [LegacyAppStoragePublisher]: pre-Q devices cannot resolve
+ *    the Q-only platform classes (NoClassDefFoundError — an Error no
+ *    `catch (Exception)` swallows, which used to leave rows stuck in
+ *    DOWNLOADING), and the app deliberately holds no legacy storage
+ *    permission, so the file is copied into the app's own external files
+ *    directory and addressed by a file:// URI.
+ *
+ * Safety properties (both paths):
+ *  - the display name passes through FileNameSanitizer (no traversal)
+ *  - a partial publish is never left behind (delete on failure)
+ *  - [delete] handles both content:// and file:// URIs
+ *  - no storage permission needed (scoped storage / app-contributed storage)
  */
 @Singleton
 open class MediaStoreFileWriter @Inject constructor(
@@ -38,7 +45,7 @@ open class MediaStoreFileWriter @Inject constructor(
     /**
      * Publishes [stagingFile] under [displayName] with MIME [mimeType]
      * (fallback "application/octet-stream" when the server didn't declare).
-     * Returns the final content:// URI.
+     * Returns the persistent URI for the finished file.
      */
     suspend fun publish(
         stagingFile: File,
@@ -55,65 +62,65 @@ open class MediaStoreFileWriter @Inject constructor(
         subDirectory: String?,
     ): Uri = withContext(Dispatchers.IO) {
         val location = settingsRepository.settings.first().downloadLocation
-        val collection = collectionUriFor(location)
-        val resolver = context.contentResolver
-
-        val safeName = com.narcictub.app.domain.FileNameSanitizer.sanitize(
+        val safeName = FileNameSanitizer.sanitize(
             displayName,
             fallback = stagingFile.nameWithoutExtension.ifEmpty { "download" },
         )
-
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, safeName)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeType?.takeIf { it.isNotBlank() } ?: "application/octet-stream")
-            if (subDirectory != null) put(MediaStore.MediaColumns.RELATIVE_PATH, subDirectory)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-            }
-        }
-
-        val pendingUri = resolver.insert(collection, values)
-            ?: throw java.io.IOException("MediaStore insert failed")
-
-        try {
-            resolver.openOutputStream(pendingUri)?.use { output ->
-                stagingFile.inputStream().use { input ->
-                    input.copyTo(output, DEFAULT_BUFFER_SIZE)
-                }
-                output.flush()
-            } ?: throw java.io.IOException("MediaStore stream unavailable")
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val finalizeValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.IS_PENDING, 0)
-                }
-                resolver.update(pendingUri, finalizeValues, null, null)
-            }
-            pendingUri
-        } catch (e: Exception) {
-            // Never leave a dangling/partial published entry behind.
-            runCatching { resolver.delete(pendingUri, null, null) }
-            throw e
-        }
-    }
-
-    /** Deletes a published entry — used when finalization failed downstream. */
-    suspend fun delete(uri: Uri): Boolean = withContext(Dispatchers.IO) {
-        context.contentResolver.delete(uri, null, null) > 0
-    }
-
-    private fun collectionUriFor(location: DownloadLocation): Uri = when (location) {
-        DownloadLocation.DOWNLOADS -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
-        // The dedicated collections below only exist on Android 10+.
-        else -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            when (location) {
-                DownloadLocation.MUSIC -> MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                DownloadLocation.MOVIES -> MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                DownloadLocation.DCIM -> MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-                DownloadLocation.DOWNLOADS -> MediaStore.Downloads.EXTERNAL_CONTENT_URI
-            }
+        if (deviceSdkInt() >= Build.VERSION_CODES.Q) {
+            publishViaQPlus(location, stagingFile, safeName, mimeType, subDirectory)
         } else {
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI
+            publishViaLegacy(location, stagingFile, safeName)
+        }
+    }
+
+    /** Device API level — seam for tests pinning the 26–28 vs 29+ split. */
+    protected open fun deviceSdkInt(): Int = Build.VERSION.SDK_INT
+
+    /**
+     * API 29+ path. Delegates to [QPlusMediaStorePublisher]; the Q-only
+     * MediaStore symbols live only in that file, which is class-loaded only
+     * on Q+ devices.
+     */
+    protected open fun publishViaQPlus(
+        location: DownloadLocation,
+        stagingFile: File,
+        safeName: String,
+        mimeType: String?,
+        subDirectory: String?,
+    ): Uri = QPlusMediaStorePublisher.publish(
+        resolver = context.contentResolver,
+        location = location,
+        stagingFile = stagingFile,
+        safeName = safeName,
+        mimeType = mimeType,
+        subDirectory = subDirectory,
+    )
+
+    /**
+     * API 26–28 path. Delegates to [LegacyAppStoragePublisher]; contains no
+     * Q-only platform symbol (pinned by MediaStoreFileWriterTest). The Q+
+     * relative-subdirectory concept does not exist pre-Q — the chosen
+     * collection decides the folder instead.
+     */
+    protected open fun publishViaLegacy(
+        location: DownloadLocation,
+        stagingFile: File,
+        safeName: String,
+    ): Uri = toFileUri(LegacyAppStoragePublisher.publish(context, location, stagingFile, safeName))
+
+    /** file:// conversion seam (android.net.Uri statics are not unit-testable). */
+    protected open fun toFileUri(file: File): Uri = Uri.fromFile(file)
+
+    /**
+     * Deletes a published entry — used when finalization failed downstream.
+     * Handles both the Q+ content:// form and the pre-Q file:// form.
+     * Open so tests can record deletions (Phase 10 record-vs-file semantics).
+     */
+    open suspend fun delete(uri: Uri): Boolean = withContext(Dispatchers.IO) {
+        if (uri.scheme == "content") {
+            context.contentResolver.delete(uri, null, null) > 0
+        } else {
+            uri.path?.let { path -> File(path).delete() } ?: false
         }
     }
 }

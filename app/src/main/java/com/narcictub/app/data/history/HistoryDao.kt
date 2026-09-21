@@ -39,9 +39,17 @@ interface HistoryDao {
     @Query("DELETE FROM history")
     suspend fun clear()
 
+    /** Deletes every row whose status is in [statuses] (enum names as TEXT). */
+    @Query("DELETE FROM history WHERE status IN (:statuses)")
+    suspend fun deleteByStatuses(statuses: List<String>)
+
     @Query("UPDATE history SET local_uri = :localUri WHERE id = :id")
     suspend fun updateLocalUri(id: Long, localUri: String)
 
     @Query("UPDATE history SET size_bytes = :sizeBytes WHERE id = :id")
     suspend fun updateSizeBytes(id: Long, sizeBytes: Long)
+
+    /** PHASE 10: persists the server-declared MIME type captured at completion. */
+    @Query("UPDATE history SET mime_type = :mimeType WHERE id = :id")
+    suspend fun updateMimeType(id: Long, mimeType: String?)
 }

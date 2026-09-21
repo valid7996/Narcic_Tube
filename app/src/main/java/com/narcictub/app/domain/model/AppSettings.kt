@@ -16,4 +16,14 @@ data class AppSettings(
     val wifiOnly: Boolean = true,
     val concurrentDownloads: Int = 3,
     val notificationsEnabled: Boolean = true,
-)
+) {
+    companion object {
+        /**
+         * PHASE 13: single source of truth for the valid concurrent-downloads
+         * range — the use case gates it and the DataStore layer clamps it
+         * (both pinned by tests).
+         */
+        const val MIN_CONCURRENT_DOWNLOADS = 1
+        const val MAX_CONCURRENT_DOWNLOADS = 8
+    }
+}

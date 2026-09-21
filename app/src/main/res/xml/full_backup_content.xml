@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  L-2 (Phase 6 review): legacy full-backup-content rules for API 26–30
+  (the fullBackupContent schema differs from dataExtractionRules, hence a
+  separate file; see backup_rules.xml for API 31+ and the full rationale).
+  Only the Room database (download history with sourceUrl and device-local
+  localUri values) is excluded from cloud backup; DataStore preferences
+  (benign app settings) are not listed and so remain backed up.
+-->
+<full-backup-content>
+    <exclude domain="database" />
+</full-backup-content>

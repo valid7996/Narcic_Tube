@@ -50,4 +50,8 @@ data class HistoryEntity(
 
     @ColumnInfo(name = "error_message")
     val errorMessage: String? = null,
+
+    /** PHASE 22: real container duration (seconds), persisted at enqueue. */
+    @ColumnInfo(name = "duration_seconds")
+    val durationSeconds: Long? = null,
 )

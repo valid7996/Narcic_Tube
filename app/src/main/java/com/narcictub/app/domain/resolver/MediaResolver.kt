@@ -10,12 +10,8 @@ interface MediaResolver {
 
     /**
      * Resolves [url] into [MediaInfo]. Never throws — every failure is
-     * reported through the returned [Result].
+     * reported through the returned [Result] as a [MediaResolveException]
+     * (coroutine cancellation excepted, which propagates as usual).
      */
     suspend fun resolve(url: String): Result<MediaInfo>
 }
-
-/** Raised while no real resolver implementation is wired yet. */
-class ResolverNotImplementedException(
-    message: String = "Media resolver is not implemented yet — no metadata extraction is performed",
-) : Exception(message)

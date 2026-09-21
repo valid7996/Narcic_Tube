@@ -25,6 +25,7 @@ object HistoryMappers {
         createdAt = Instant.ofEpochMilli(createdAtEpochMs),
         completedAt = completedAtEpochMs?.let(Instant::ofEpochMilli),
         errorMessage = errorMessage,
+        durationSeconds = durationSeconds,
     )
 
     fun HistoryItem.toEntity(): HistoryEntity = HistoryEntity(
@@ -41,6 +42,7 @@ object HistoryMappers {
         createdAtEpochMs = createdAt.toEpochMilli(),
         completedAtEpochMs = completedAt?.toEpochMilli(),
         errorMessage = errorMessage,
+        durationSeconds = durationSeconds,
     )
 
     fun List<HistoryEntity>.toDomainList(): List<HistoryItem> = map { it.toDomain() }
