@@ -27,11 +27,13 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -45,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.data.ytdlp.YtDlpCookies
+import com.narcictub.app.overlay.ClipboardWatcherService
+import com.narcictub.app.overlay.OverlayPermission
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
@@ -117,6 +121,12 @@ fun SettingsScreen(
 
             SectionHeader("YouTube & Instagram login (optional)")
             LoginCookiesSection()
+
+            SectionHeader("Floating download bubble")
+            ClipboardWatcherSection(
+                enabled = state.clipboardWatcherEnabled,
+                onToggle = viewModel::onClipboardWatcherToggled,
+            )
 
             Spacer(Modifier.height(16.dp))
         }
@@ -232,6 +242,70 @@ private fun ConcurrentDownloadsSection(
  * importing that browser's cookies.txt (Netscape format) lets the downloader
  * do the same. The file stays in app-private storage and is never backed up.
  */
+/**
+ * Sharing a YouTube/Instagram link always offers the floating bubble
+ * (permission-gated, falls back to opening the app). This toggle is the
+ * OPTIONAL extra: also open the bubble automatically for a link that was
+ * just copied, without any Share action. See ClipboardWatcherService for
+ * why that detection is best-effort on Android 10+.
+ */
+@Composable
+private fun ClipboardWatcherSection(
+    enabled: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val context = LocalContext.current
+    var hasOverlayPermission by remember { mutableStateOf(OverlayPermission.isGranted(context)) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        hasOverlayPermission = OverlayPermission.isGranted(context)
+        if (hasOverlayPermission && enabled) ClipboardWatcherService.start(context)
+    }
+
+    // Keeps the running service in sync with the persisted setting across
+    // process restarts, without owning the setting itself.
+    LaunchedEffect(enabled, hasOverlayPermission) {
+        if (enabled && hasOverlayPermission) {
+            ClipboardWatcherService.start(context)
+        } else {
+            ClipboardWatcherService.stop(context)
+        }
+    }
+
+    Text(
+        text = "Sharing a link always offers the floating bubble. Turn this on to also " +
+            "open it automatically for a link you just copied — no Share button needed. " +
+            "Needs \"display over other apps\"; detection isn't guaranteed while the app " +
+            "is fully in the background (an Android 10+ restriction).",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text("Suggest downloads from clipboard", style = MaterialTheme.typography.bodyMedium)
+        Switch(
+            checked = enabled,
+            onCheckedChange = { checked ->
+                if (checked && !hasOverlayPermission) {
+                    permissionLauncher.launch(OverlayPermission.requestIntent(context))
+                }
+                onToggle(checked)
+            },
+        )
+    }
+    if (enabled && !hasOverlayPermission) {
+        Text(
+            text = "Permission not granted yet — the watcher will start once you allow it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
 @Composable
 private fun LoginCookiesSection() {
     val context = LocalContext.current

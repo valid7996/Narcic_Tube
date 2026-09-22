@@ -56,6 +56,7 @@ class MediaStoreFileWriterTest {
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setConcurrentDownloads(count: Int) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
+        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {}
     }
 
     /** Writer with both publish paths instrumented; records which path ran. */

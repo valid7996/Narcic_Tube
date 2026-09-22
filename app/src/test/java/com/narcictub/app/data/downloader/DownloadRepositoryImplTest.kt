@@ -131,6 +131,7 @@ class DownloadRepositoryImplTest {
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setConcurrentDownloads(count: Int) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
+        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {}
     }
 
     /** Stub writer: bypasses the real MediaStore on the JVM. */

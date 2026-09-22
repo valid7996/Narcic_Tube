@@ -44,17 +44,50 @@ class SettingsUseCaseTest {
         override suspend fun setNotificationsEnabled(enabled: Boolean) {
             if (fail) throw IOException("boom")
         }
+        val clipboardWatcherWrites = mutableListOf<Boolean>()
+        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {
+            if (fail) throw IOException("boom")
+            clipboardWatcherWrites.add(enabled)
+        }
     }
 
     private lateinit var repository: RecordingSettingsRepository
 
-    private fun useCases(): Triple<SetThemeModeUseCase, SetDownloadLocationUseCase, SetConcurrentDownloadsUseCase> {
+    private fun useCases(): Quadruple {
         repository = RecordingSettingsRepository()
-        return Triple(
+        return Quadruple(
             SetThemeModeUseCase(repository),
             SetDownloadLocationUseCase(repository),
             SetConcurrentDownloadsUseCase(repository),
+            SetClipboardWatcherEnabledUseCase(repository),
         )
+    }
+
+    private data class Quadruple(
+        val theme: SetThemeModeUseCase,
+        val location: SetDownloadLocationUseCase,
+        val concurrent: SetConcurrentDownloadsUseCase,
+        val clipboardWatcher: SetClipboardWatcherEnabledUseCase,
+    )
+
+    // ===== clipboard watcher toggle =====
+
+    @Test
+    fun `clipboard watcher enabled state is persisted as given`() = runTest {
+        val (_, _, _, setClipboardWatcher) = useCases()
+
+        assertTrue(setClipboardWatcher(true).isSuccess)
+        assertTrue(setClipboardWatcher(false).isSuccess)
+
+        assertEquals(listOf(true, false), repository.clipboardWatcherWrites)
+    }
+
+    @Test
+    fun `clipboard watcher write failure is mapped to a Result failure`() = runTest {
+        val (_, _, _, setClipboardWatcher) = useCases()
+        repository.fail = true
+
+        assertTrue(setClipboardWatcher(true).isFailure)
     }
 
     // ===== concurrent downloads: the range gate =====

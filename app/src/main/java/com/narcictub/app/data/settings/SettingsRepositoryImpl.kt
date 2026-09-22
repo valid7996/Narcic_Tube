@@ -32,6 +32,7 @@ private object SettingsKeys {
     val WIFI_ONLY = booleanPreferencesKey("wifi_only")
     val CONCURRENT_DOWNLOADS = intPreferencesKey("concurrent_downloads")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+    val CLIPBOARD_WATCHER_ENABLED = booleanPreferencesKey("clipboard_watcher_enabled")
 }
 
 /**
@@ -63,6 +64,7 @@ class SettingsRepositoryImpl @Inject constructor(
                 concurrentDownloads = (prefs[SettingsKeys.CONCURRENT_DOWNLOADS] ?: 3)
                     .coerceIn(MIN_CONCURRENT, MAX_CONCURRENT),
                 notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: true,
+                clipboardWatcherEnabled = prefs[SettingsKeys.CLIPBOARD_WATCHER_ENABLED] ?: false,
             )
         }
 
@@ -86,6 +88,10 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setNotificationsEnabled(enabled: Boolean) {
         dataStore.edit { it[SettingsKeys.NOTIFICATIONS_ENABLED] = enabled }
+    }
+
+    override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {
+        dataStore.edit { it[SettingsKeys.CLIPBOARD_WATCHER_ENABLED] = enabled }
     }
 
     companion object {

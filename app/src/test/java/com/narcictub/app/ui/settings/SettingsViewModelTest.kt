@@ -5,6 +5,7 @@ import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.domain.repository.SettingsRepository
 import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
+import com.narcictub.app.domain.usecase.SetClipboardWatcherEnabledUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
@@ -74,6 +75,13 @@ class SettingsViewModelTest {
             concurrentWrites.add(count)
             state.value = state.value.copy(concurrentDownloads = count)
         }
+
+        val clipboardWatcherWrites = mutableListOf<Boolean>()
+        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {
+            if (failWrites) throw IOException("boom")
+            clipboardWatcherWrites.add(enabled)
+            state.value = state.value.copy(clipboardWatcherEnabled = enabled)
+        }
     }
 
     private lateinit var repository: FakeSettingsRepository
@@ -83,6 +91,7 @@ class SettingsViewModelTest {
         setThemeMode = SetThemeModeUseCase(repository),
         setDownloadLocation = SetDownloadLocationUseCase(repository),
         setConcurrentDownloads = SetConcurrentDownloadsUseCase(repository),
+        setClipboardWatcherEnabled = SetClipboardWatcherEnabledUseCase(repository),
     )
 
     @Before
@@ -104,6 +113,20 @@ class SettingsViewModelTest {
     private fun collectTheme(vm: SettingsViewModel): kotlinx.coroutines.Job =
         kotlinx.coroutines.CoroutineScope(testDispatcher + kotlinx.coroutines.Job())
             .launch { vm.themeMode.collect {} }
+
+    @Test
+    fun `clipboard watcher toggle is persisted and reflected back`() = runTest {
+        val vm = viewModel()
+        val job = collect(vm)
+        advanceUntilIdle()
+
+        vm.onClipboardWatcherToggled(true)
+        advanceUntilIdle()
+
+        assertEquals(listOf(true), repository.clipboardWatcherWrites)
+        assertTrue(vm.uiState.value.clipboardWatcherEnabled)
+        job.cancel()
+    }
 
     @Test
     fun `initial state is loading`() {

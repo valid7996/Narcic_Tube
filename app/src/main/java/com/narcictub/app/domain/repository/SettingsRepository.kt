@@ -19,4 +19,6 @@ interface SettingsRepository {
     suspend fun setConcurrentDownloads(count: Int)
 
     suspend fun setNotificationsEnabled(enabled: Boolean)
+
+    suspend fun setClipboardWatcherEnabled(enabled: Boolean)
 }

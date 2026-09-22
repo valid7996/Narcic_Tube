@@ -62,9 +62,22 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleShareIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            // No binary intake, no wildcard MIME: text/plain shares only.
-            shareIntakeViewModel.onNewSharedText(intent.getStringExtra(Intent.EXTRA_TEXT))
+        when {
+            // Direct Android Share (kept as a defensive fallback — the
+            // manifest routes real Share-sheet intents to
+            // ShareTrampolineActivity instead, which decides between the
+            // floating bubble and opening this activity).
+            intent?.action == Intent.ACTION_SEND && intent.type == "text/plain" ->
+                shareIntakeViewModel.onNewSharedText(intent.getStringExtra(Intent.EXTRA_TEXT))
+            // Forwarded by ShareTrampolineActivity (no overlay permission)
+            // or by OverlayBubbleService's "Open app" action.
+            intent?.action == ACTION_OPEN_URL ->
+                shareIntakeViewModel.onNewSharedText(intent.getStringExtra(EXTRA_URL))
         }
+    }
+
+    companion object {
+        const val ACTION_OPEN_URL = "com.narcictub.app.action.OPEN_URL"
+        const val EXTRA_URL = "com.narcictub.app.extra.URL"
     }
 }

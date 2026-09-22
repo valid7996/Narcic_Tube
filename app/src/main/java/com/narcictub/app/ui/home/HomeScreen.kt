@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,6 +44,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.MediaInfo
@@ -87,6 +91,22 @@ fun HomeScreen(
         }
     }
 
+    // Smart clipboard suggestion: the app can only ever read the clipboard
+    // while it's genuinely in the foreground (Android 10+ policy), so this
+    // checks it exactly once per resume — never on a timer, never while
+    // backgrounded.
+    val clipboard = LocalClipboardManager.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, viewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.onClipboardTextObserved(clipboard.getText()?.text)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     HomeContent(
         state = state,
         onUrlChange = viewModel::onUrlChange,
@@ -95,6 +115,8 @@ fun HomeScreen(
         onDownload = viewModel::onDownload,
         onVariantSelected = viewModel::onVariantSelected,
         onQueuedMessageShown = viewModel::onQueuedMessageShown,
+        onClipboardSuggestionAccepted = viewModel::onClipboardSuggestionAccepted,
+        onClipboardSuggestionDismissed = viewModel::onClipboardSuggestionDismissed,
         modifier = modifier,
     )
 }
@@ -108,6 +130,8 @@ private fun HomeContent(
     onDownload: () -> Unit,
     onVariantSelected: (String) -> Unit,
     onQueuedMessageShown: () -> Unit,
+    onClipboardSuggestionAccepted: () -> Unit,
+    onClipboardSuggestionDismissed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
@@ -131,10 +155,18 @@ private fun HomeContent(
             style = MaterialTheme.typography.headlineMedium,
         )
         Text(
-            text = "Paste a direct media link to begin",
+            text = "Paste a link — YouTube, Instagram or direct media — it resolves automatically",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        state.clipboardSuggestion?.let { suggestedUrl ->
+            ClipboardSuggestionCard(
+                url = suggestedUrl,
+                onAccept = onClipboardSuggestionAccepted,
+                onDismiss = onClipboardSuggestionDismissed,
+            )
+        }
 
         OutlinedTextField(
             value = state.url,
@@ -197,7 +229,7 @@ private fun HomeContent(
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         } else if (state.isUrlValid && state.resolvedMedia == null && state.errorMessage == null) {
             Text(
-                text = "Paste a YouTube, Instagram or direct media link, then resolve it.",
+                text = "The link resolves automatically — Resolve is only needed to retry.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -241,6 +273,54 @@ private fun HomeContent(
 
         Spacer(Modifier.height(4.dp))
     }
+}
+
+/**
+ * "You copied a link — download it?" — the smart-clipboard suggestion. It is
+ * always dismissible and never auto-fills the field on its own; the user
+ * decides with one tap.
+ */
+@Composable
+private fun ClipboardSuggestionCard(
+    url: String,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(Icons.Filled.ContentPaste, contentDescription = null)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Link copied — download it?",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = shortenForDisplay(url),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(Icons.Filled.Clear, contentDescription = "Dismiss")
+            }
+            Button(onClick = onAccept) {
+                Text("Download")
+            }
+        }
+    }
+}
+
+/** Host + truncated path, purely for a compact one-line preview — never used for navigation. */
+private fun shortenForDisplay(url: String): String {
+    val withoutScheme = url.substringAfter("://", url)
+    return if (withoutScheme.length > 48) withoutScheme.take(45) + "…" else withoutScheme
 }
 
 @Composable
@@ -408,6 +488,8 @@ private fun HomeContentEmptyPreview() {
             onResolve = {},
             onDownload = {},
             onQueuedMessageShown = {},
+            onClipboardSuggestionAccepted = {},
+            onClipboardSuggestionDismissed = {},
         )
     }
 }
@@ -427,6 +509,8 @@ private fun HomeContentActivePreview() {
             onResolve = {},
             onDownload = {},
             onQueuedMessageShown = {},
+            onClipboardSuggestionAccepted = {},
+            onClipboardSuggestionDismissed = {},
         )
     }
 }
@@ -455,6 +539,8 @@ private fun HomeContentResolvedPreview() {
             onResolve = {},
             onDownload = {},
             onQueuedMessageShown = {},
+            onClipboardSuggestionAccepted = {},
+            onClipboardSuggestionDismissed = {},
         )
     }
 }

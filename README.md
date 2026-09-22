@@ -25,6 +25,35 @@ Direct media links keep using the original HTTP downloader.
 - **Instagram** often requires a login. Import a browser `cookies.txt` in Settings.
 - Only progressive/merged single items are downloaded (no playlists).
 
+### Smart link handling (no manual "Resolve" tap, no need to open the app)
+
+- **Auto-resolve.** Typing or pasting a valid link resolves it automatically
+  (short debounce after you stop typing/pasting) — `Resolve` is now only a
+  manual retry button.
+- **In-app clipboard suggestion.** Whenever the Home screen comes to the
+  foreground, a copied supported link is offered as a one-tap "Download it?"
+  card. Dismissible, never auto-fills on its own, and only reads the
+  clipboard while the app is genuinely in the foreground.
+- **Floating download bubble.** Tapping Share on YouTube/Instagram (or any
+  app) no longer has to open NarcicTub: `ShareTrampolineActivity` is now the
+  real Share target, and — if "display over other apps" is granted — it
+  opens a small draggable bubble (`OverlayBubbleService`) over whatever app
+  you were using. Tap it to see quality choices and hit Download; the bubble
+  closes itself a moment later and the existing download notification takes
+  it from there. Without that permission it falls back to the previous
+  behavior: opening the app with the link pre-filled.
+- **Clipboard watcher (optional, Settings → "Floating download bubble").**
+  Off by default. When enabled, a foreground service also opens the bubble
+  for a newly copied link, without any Share action at all.
+  **Real limitation, not a bug:** since Android 10, an app that isn't the
+  foreground/focused app generally cannot read the clipboard. The listener
+  still runs, but on many devices/Android versions it simply won't fire
+  while NarcicTub is fully backgrounded — there's no app-level fix for this
+  short of the much heavier AccessibilityService permission, which this app
+  deliberately does not request. Sharing (always reliable) and the in-app
+  suggestion (reliable whenever the app is open) are the dependable paths;
+  this toggle is a best-effort bonus on top of them.
+
 ### Licensing
 
 youtubedl-android and yt-dlp are GPL-3.0 / Unlicense-family components; distributing the APK means

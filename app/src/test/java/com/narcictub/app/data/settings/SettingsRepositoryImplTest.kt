@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -84,6 +85,16 @@ class SettingsRepositoryImplTest {
     }
 
     @Test
+    fun `clipboard watcher round-trips and defaults to disabled`() = testScope.runTest {
+        val repository = newRepository()
+        assertFalse(repository.settings.first().clipboardWatcherEnabled)
+        repository.setClipboardWatcherEnabled(true)
+        assertTrue(repository.settings.first().clipboardWatcherEnabled)
+        repository.setClipboardWatcherEnabled(false)
+        assertFalse(repository.settings.first().clipboardWatcherEnabled)
+    }
+
+    @Test
     fun `concurrent downloads is clamped to the allowed range`() = testScope.runTest {
         val repository = newRepository()
         repository.setConcurrentDownloads(99)
@@ -103,6 +114,7 @@ class SettingsRepositoryImplTest {
         assertEquals(true, defaults.wifiOnly)
         assertEquals(3, defaults.concurrentDownloads)
         assertEquals(true, defaults.notificationsEnabled)
+        assertEquals(false, defaults.clipboardWatcherEnabled)
     }
 
     @Test

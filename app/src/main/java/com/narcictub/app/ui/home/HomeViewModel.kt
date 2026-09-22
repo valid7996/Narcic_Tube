@@ -9,9 +9,11 @@ import com.narcictub.app.domain.model.MediaVariant
 import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
 import com.narcictub.app.domain.usecase.InvalidUrlException
+import com.narcictub.app.domain.share.SharedTextUrl
 import com.narcictub.app.domain.usecase.ResolveUrlUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,14 +44,18 @@ class HomeViewModel @Inject constructor(
 
     private var resolveJob: Job? = null
 
+    /** Debounces auto-resolve so a link is resolved once typing/pasting settles. */
+    private var autoResolveJob: Job? = null
+
     fun onUrlChange(newUrl: String) {
         // UX-only lightweight feedback; NOT a security boundary.
         val message = UrlValidator.validationMessage(newUrl)
             ?.takeUnless { it == "Paste a link to begin" }
+        val isValid = newUrl.isNotBlank() && message == null
         _uiState.update {
             it.copy(
                 url = newUrl,
-                isUrlValid = newUrl.isNotBlank() && message == null,
+                isUrlValid = isValid,
                 validationMessage = message?.takeIf { newUrl.isNotBlank() },
                 resolvedMedia = null,
                 // Phase 20: a new URL invalidates any previous variant
@@ -58,11 +64,36 @@ class HomeViewModel @Inject constructor(
                 errorMessage = null,
             )
         }
+        // Smart link detection: the user should never have to press Resolve
+        // by hand. A short debounce lets fast typing/pasting settle first —
+        // it restarts on every keystroke, so only the URL the user actually
+        // stops on gets resolved. Explicit Resolve stays available as a
+        // manual retry.
+        autoResolveJob?.cancel()
+        if (isValid) {
+            autoResolveJob = viewModelScope.launch {
+                delay(AUTO_RESOLVE_DEBOUNCE_MS)
+                // Skip if: the field changed again since (a newer debounce
+                // owns it), a resolve is already running, or this exact URL
+                // was already resolved (success OR failure) by a manual
+                // Resolve tap that beat the debounce — onResolve() keeps its
+                // own duplicate-request guard too, this just avoids
+                // needlessly re-resolving a URL that didn't change.
+                val current = _uiState.value
+                if (current.url == newUrl && !current.isResolving &&
+                    current.resolvedMedia == null && current.errorMessage == null
+                ) {
+                    onResolve()
+                }
+            }
+        }
     }
 
     fun onClear() {
         resolveJob?.cancel()
         resolveJob = null
+        autoResolveJob?.cancel()
+        autoResolveJob = null
         _uiState.update { HomeUiState() }
     }
 
@@ -217,6 +248,37 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
+     * In-app clipboard suggestion: called whenever the Home screen comes to
+     * the foreground (it's the only moment the app may read the clipboard
+     * at all). The same conservative single-URL extraction as Android Share
+     * intake is reused — never a looser heuristic. A clip already looked at
+     * (accepted, dismissed, or simply seen) is never re-suggested, and a
+     * clip that matches the URL already in the field is not offered either.
+     */
+    fun onClipboardTextObserved(rawClipboardText: String?) {
+        val state = _uiState.value
+        if (rawClipboardText.isNullOrBlank() || rawClipboardText == state.lastSeenClipboardText) return
+        val candidate = (SharedTextUrl.extract(rawClipboardText) as? SharedTextUrl.Extraction.Single)?.url
+        _uiState.update {
+            it.copy(
+                lastSeenClipboardText = rawClipboardText,
+                clipboardSuggestion = candidate?.takeIf { url -> url != state.url },
+            )
+        }
+    }
+
+    /** The user tapped the clipboard suggestion: fill it in and resolve immediately. */
+    fun onClipboardSuggestionAccepted() {
+        val url = _uiState.value.clipboardSuggestion ?: return
+        onSharedUrlReceived(url)
+    }
+
+    /** The user dismissed the clipboard suggestion for this clip. */
+    fun onClipboardSuggestionDismissed() {
+        _uiState.update { it.copy(clipboardSuggestion = null) }
+    }
+
+    /**
      * PHASE 17: entry point for Android Share intake. Any in-flight resolve
      * is cancelled deterministically, the shared URL fills the form, and
      * resolution starts — the user still chooses Download explicitly.
@@ -224,7 +286,9 @@ class HomeViewModel @Inject constructor(
     fun onSharedUrlReceived(url: String) {
         resolveJob?.cancel()
         resolveJob = null
-        _uiState.update { it.copy(isResolving = false) }
+        autoResolveJob?.cancel()
+        autoResolveJob = null
+        _uiState.update { it.copy(isResolving = false, clipboardSuggestion = null) }
         onUrlChange(url)
         onResolve()
     }
@@ -238,6 +302,10 @@ class HomeViewModel @Inject constructor(
      * Safe error mapping — the user never sees URLs, query strings,
      * credentials, paths, stack traces or raw exception messages.
      */
+    private companion object {
+        const val AUTO_RESOLVE_DEBOUNCE_MS = 500L
+    }
+
     private fun messageFor(error: Throwable): String = when (error) {
         is MediaResolveException.UnsupportedSource ->
             "This isn't a direct media file link — dedicated platforms aren't supported yet."

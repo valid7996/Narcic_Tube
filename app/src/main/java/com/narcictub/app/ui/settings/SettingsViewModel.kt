@@ -6,6 +6,7 @@ import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
+import com.narcictub.app.domain.usecase.SetClipboardWatcherEnabledUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
@@ -32,6 +33,7 @@ data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val downloadLocation: DownloadLocation = DownloadLocation.DOWNLOADS,
     val concurrentDownloads: Int = AppSettings.MIN_CONCURRENT_DOWNLOADS,
+    val clipboardWatcherEnabled: Boolean = false,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
 )
@@ -42,6 +44,7 @@ class SettingsViewModel @Inject constructor(
     private val setThemeMode: SetThemeModeUseCase,
     private val setDownloadLocation: SetDownloadLocationUseCase,
     private val setConcurrentDownloads: SetConcurrentDownloadsUseCase,
+    private val setClipboardWatcherEnabled: SetClipboardWatcherEnabledUseCase,
 ) : ViewModel() {
 
     /** One-shot safe message for a failed write; cleared on the next success. */
@@ -63,6 +66,7 @@ class SettingsViewModel @Inject constructor(
                 themeMode = settings.theme,
                 downloadLocation = settings.downloadLocation,
                 concurrentDownloads = settings.concurrentDownloads,
+                clipboardWatcherEnabled = settings.clipboardWatcherEnabled,
                 isLoading = false,
             )
         }
@@ -91,6 +95,14 @@ class SettingsViewModel @Inject constructor(
 
     /** Out-of-range values are rejected by the use case — safe message only. */
     fun onConcurrentDownloadsSelected(count: Int) = launchWrite { setConcurrentDownloads(count) }
+
+    /**
+     * The overlay-permission check/request lives in the screen (it needs a
+     * Context/Activity); this only ever persists what the user chose.
+     * [enabled] must already reflect a permission check the caller made —
+     * this use case does not gate on it.
+     */
+    fun onClipboardWatcherToggled(enabled: Boolean) = launchWrite { setClipboardWatcherEnabled(enabled) }
 
     private fun launchWrite(write: suspend () -> Result<Unit>) {
         viewModelScope.launch {

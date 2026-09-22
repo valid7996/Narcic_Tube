@@ -10,6 +10,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -270,6 +271,124 @@ class HomeViewModelTest {
 
         assertNull(resolver.received)
         assertEquals("That doesn't look like a valid link", vm.uiState.value.validationMessage)
+    }
+
+    // ===== smart auto-resolve (no manual Resolve tap needed) =====
+
+    @Test
+    fun `a valid url resolves itself after the user stops typing`() = runTest {
+        resolver.result = Result.success(directFileInfo("https://example.com/clip.mp4"))
+        val vm = viewModel()
+
+        vm.onUrlChange("https://example.com/clip.mp4")
+        assertEquals("nothing happens before the debounce settles", 0, resolver.callCount)
+
+        advanceUntilIdle()
+
+        assertEquals(1, resolver.callCount)
+        assertEquals("https://example.com/clip.mp4", resolver.received)
+        assertTrue(vm.uiState.value.canDownload)
+    }
+
+    @Test
+    fun `further typing restarts the debounce instead of resolving every keystroke`() = runTest {
+        resolver.result = Result.success(directFileInfo("https://example.com/final.mp4"))
+        val vm = viewModel()
+
+        vm.onUrlChange("https://example.com/f")
+        advanceTimeBy(300)
+        vm.onUrlChange("https://example.com/fi")
+        advanceTimeBy(300)
+        vm.onUrlChange("https://example.com/final.mp4")
+        advanceUntilIdle()
+
+        assertEquals(1, resolver.callCount)
+        assertEquals("https://example.com/final.mp4", resolver.received)
+    }
+
+    @Test
+    fun `a manual resolve that finishes first is not duplicated by the debounce`() = runTest {
+        resolver.result = Result.success(directFileInfo("https://example.com/a.mp4"))
+        val vm = viewModel()
+
+        vm.onUrlChange("https://example.com/a.mp4")
+        vm.onResolve()
+        advanceUntilIdle()
+
+        assertEquals(1, resolver.callCount)
+    }
+
+    @Test
+    fun `clearing the form cancels a pending auto-resolve`() = runTest {
+        val vm = viewModel()
+        vm.onUrlChange("https://example.com/clip.mp4")
+        vm.onClear()
+        advanceUntilIdle()
+
+        assertEquals(0, resolver.callCount)
+    }
+
+    // ===== smart clipboard suggestion =====
+
+    @Test
+    fun `a new supported link on the clipboard is offered as a suggestion`() = runTest {
+        val vm = viewModel()
+        vm.onClipboardTextObserved("https://youtu.be/abc123")
+
+        assertEquals("https://youtu.be/abc123", vm.uiState.value.clipboardSuggestion)
+    }
+
+    @Test
+    fun `unsupported clipboard text is not suggested`() = runTest {
+        val vm = viewModel()
+        vm.onClipboardTextObserved("just some notes, not a link")
+
+        assertNull(vm.uiState.value.clipboardSuggestion)
+    }
+
+    @Test
+    fun `the same clip is never suggested twice`() = runTest {
+        val vm = viewModel()
+        vm.onClipboardTextObserved("https://youtu.be/abc123")
+        vm.onClipboardSuggestionDismissed()
+        vm.onClipboardTextObserved("https://youtu.be/abc123")
+
+        assertNull(vm.uiState.value.clipboardSuggestion)
+    }
+
+    @Test
+    fun `a clip matching the url already in the field is not suggested`() = runTest {
+        val vm = viewModel()
+        vm.onUrlChange("https://youtu.be/abc123")
+        vm.onClipboardTextObserved("https://youtu.be/abc123")
+
+        assertNull(vm.uiState.value.clipboardSuggestion)
+    }
+
+    @Test
+    fun `accepting the clipboard suggestion fills the field and resolves immediately`() = runTest {
+        resolver.result = Result.success(directFileInfo("https://example.com/clip.mp4"))
+        val vm = viewModel()
+        vm.onClipboardTextObserved("https://example.com/clip.mp4")
+
+        vm.onClipboardSuggestionAccepted()
+        advanceUntilIdle()
+
+        assertEquals("https://example.com/clip.mp4", vm.uiState.value.url)
+        assertNull(vm.uiState.value.clipboardSuggestion)
+        assertTrue(vm.uiState.value.canDownload)
+    }
+
+    @Test
+    fun `dismissing the clipboard suggestion only clears the suggestion`() = runTest {
+        val vm = viewModel()
+        vm.onClipboardTextObserved("https://youtu.be/abc123")
+
+        vm.onClipboardSuggestionDismissed()
+
+        assertNull(vm.uiState.value.clipboardSuggestion)
+        assertEquals("", vm.uiState.value.url)
+        assertEquals(0, resolver.callCount)
     }
 
     @Test

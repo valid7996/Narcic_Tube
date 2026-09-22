@@ -25,6 +25,10 @@ data class HomeUiState(
     val isDownloading: Boolean = false,
     val queuedSuccessfully: Boolean = false,
     val errorMessage: String? = null,
+    /** A supported link currently sitting on the clipboard, offered as a one-tap suggestion. */
+    val clipboardSuggestion: String? = null,
+    /** The last clipboard text already looked at, so the same copy is never re-suggested. */
+    val lastSeenClipboardText: String? = null,
 ) {
     /**
      * The selected variant, resolved by identity against the CURRENT

@@ -16,6 +16,14 @@ data class AppSettings(
     val wifiOnly: Boolean = true,
     val concurrentDownloads: Int = 3,
     val notificationsEnabled: Boolean = true,
+    /**
+     * Background link detection: a foreground service watches the clipboard
+     * and, on YouTube/Instagram links, opens the floating download bubble
+     * without bringing the app to the foreground. Off by default — it needs
+     * the "display over other apps" permission and runs a foreground
+     * service with an ongoing notification, so the user opts in explicitly.
+     */
+    val clipboardWatcherEnabled: Boolean = false,
 ) {
     companion object {
         /**

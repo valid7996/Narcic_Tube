@@ -10,6 +10,14 @@
          source of truth. Downloads work without it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Floating download bubble (Share intake + optional clipboard watcher).
+         A SPECIAL permission granted from system Settings, never requested
+         as a runtime prompt — both features degrade gracefully without it
+         (see ShareTrampolineActivity / ClipboardWatcherService). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
     <application
         android:name=".NarcicTubApplication"
         android:allowBackup="true"
@@ -29,16 +37,47 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- PHASE 17: receive shared TEXT links only. No wildcard MIME,
-                 no file intake, no broad capture — the activity is already
-                 exported as the launcher; this filter adds text/plain SEND
-                 handling and nothing else. -->
+        </activity>
+
+        <!-- The real Share-sheet target (moved off MainActivity): invisible,
+             decides between the floating bubble and opening the app, and
+             finishes itself immediately. See ShareTrampolineActivity. -->
+        <activity
+            android:name=".overlay.ShareTrampolineActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.NarcicTub.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Floating "chat head" bubble: resolves one link and enqueues the
+             download without opening the app. See OverlayBubbleService. -->
+        <service
+            android:name=".overlay.OverlayBubbleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="floating_download_bubble_ui" />
+        </service>
+
+        <!-- Optional (Settings toggle, off by default): opens the bubble for
+             a newly copied link. See ClipboardWatcherService for the
+             Android 10+ background-clipboard limitation this is subject to. -->
+        <service
+            android:name=".overlay.ClipboardWatcherService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="clipboard_link_detection" />
+        </service>
     </application>
 
 </manifest>
