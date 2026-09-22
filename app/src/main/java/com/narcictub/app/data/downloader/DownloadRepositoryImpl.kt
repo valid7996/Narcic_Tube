@@ -481,30 +481,31 @@ open class DownloadRepositoryImpl @Inject constructor(
                 // yt-dlp decides the container, so its extension is appended to
                 // the (extension-less) title; plain downloads are unchanged.
                 val displayName = withExtension(item.fileName ?: item.title, result.fileExtension)
-                // The live response is the best signal when it's there. When
-                // it's missing/generic (common for plain HTTP downloads with
-                // no useful Content-Type header), fall back to the type the
-                // resolver already identified at enqueue time (item.mimeType,
-                // threaded through by EnqueueDownloadUseCase), then to the
-                // real file extension — never a guess with nothing behind it.
-                // This is also what decides Movies/Music routing
-                // (DownloadLocationPolicy), so getting it right here matters
-                // more than just cosmetics in the history list.
-                val mimeHint = result.contentType
+                // PHASE 10 contract, unchanged: what's STORED/DISPLAYED as the
+                // history record's type is a real, observed signal only —
+                // the live response when it's there, else what the resolver
+                // already identified at enqueue time (item.mimeType) — NEVER
+                // a guess from the file extension.
+                val observedMimeType = result.contentType
                     ?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
                     ?: item.mimeType
+                // Movies/Music ROUTING can afford to be best-effort where the
+                // history record can't: a wrong guess only lands the file in
+                // the wrong folder, never puts a false claim in front of the
+                // user. So routing alone also tries the real file extension.
+                val routingMimeHint = observedMimeType
                     ?: YtDlpMime.forDownloadedFile(File(displayName).extension)
                 val published = mediaStoreWriter.publish(
                     stagingFile = stagingFile,
                     displayName = displayName,
-                    mimeType = mimeHint,
+                    mimeType = routingMimeHint,
                 )
 
                 historyRepository.updateLocalUri(id, published.toString())
                 historyRepository.updateSizeBytes(id, result.bytesDownloaded)
-                // PHASE 10: persist the real (now best-known) type so history
-                // shows the actual format.
-                historyRepository.updateMimeType(id, mimeHint)
+                // PHASE 10: persist the real (observed-only) type so history
+                // shows the actual format — see observedMimeType above.
+                historyRepository.updateMimeType(id, observedMimeType)
                 historyRepository.updateStatus(
                     id,
                     DownloadStatus.COMPLETED,

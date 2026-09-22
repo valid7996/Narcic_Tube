@@ -95,7 +95,7 @@ class HomeViewModelTest {
         }
         /** Titles passed through enqueueTitled (provider media). */
         val titles = mutableListOf<String?>()
-        override suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?, mimeType: String?): Long {
+        override suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long {
             titles.add(title)
             return enqueue(sourceUrl, durationSeconds)
         }

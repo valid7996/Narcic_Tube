@@ -529,6 +529,12 @@ class DownloadRepositoryImplTest {
 
         assertEquals(DownloadStatus.PAUSED, history.get(queuedId)!!.status)
         assertEquals(DownloadStatus.DOWNLOADING, history.get(busyId)!!.status)
+
+        // Release the still-hanging busy download so runTest doesn't see it
+        // as an uncompleted coroutine at the end of the test (same cleanup
+        // every other hang=true test in this file already does).
+        repo.cancel(busyId)
+        advanceUntilIdle()
     }
 
     // ===== L-1: commit-phase cancellation protection =====
