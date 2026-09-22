@@ -57,6 +57,10 @@ class HistoryRepositoryImplTest {
             rows.value = mutableListOf()
         }
 
+        override suspend fun deleteByStatuses(statuses: List<String>) {
+            rows.value = rows.value.filterNot { it.status in statuses }.toMutableList()
+        }
+
         override suspend fun updateLocalUri(id: Long, localUri: String) {
             rows.value = rows.value.map {
                 if (it.id == id) it.copy(localUri = localUri) else it
@@ -66,6 +70,12 @@ class HistoryRepositoryImplTest {
         override suspend fun updateSizeBytes(id: Long, sizeBytes: Long) {
             rows.value = rows.value.map {
                 if (it.id == id) it.copy(sizeBytes = sizeBytes) else it
+            }.toMutableList()
+        }
+
+        override suspend fun updateMimeType(id: Long, mimeType: String?) {
+            rows.value = rows.value.map {
+                if (it.id == id) it.copy(mimeType = mimeType) else it
             }.toMutableList()
         }
     }

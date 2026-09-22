@@ -53,11 +53,19 @@ class HistoryRepositoryImpl @Inject constructor(
         dao.clear()
     }
 
+    override suspend fun deleteByStatuses(statuses: Set<DownloadStatus>) {
+        dao.deleteByStatuses(statuses.map { it.name })
+    }
+
     override suspend fun updateLocalUri(id: Long, localUri: String) {
         dao.updateLocalUri(id, localUri)
     }
 
     override suspend fun updateSizeBytes(id: Long, sizeBytes: Long) {
         dao.updateSizeBytes(id, sizeBytes)
+    }
+
+    override suspend fun updateMimeType(id: Long, mimeType: String?) {
+        dao.updateMimeType(id, mimeType)
     }
 }

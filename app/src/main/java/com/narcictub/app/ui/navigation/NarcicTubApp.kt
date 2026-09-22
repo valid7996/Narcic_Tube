@@ -7,8 +7,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -18,6 +21,8 @@ import androidx.navigation.compose.rememberNavController
 import com.narcictub.app.ui.downloads.DownloadsScreen
 import com.narcictub.app.ui.history.HistoryScreen
 import com.narcictub.app.ui.home.HomeScreen
+import com.narcictub.app.ui.home.ShareIntakeViewModel
+import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
 
 /**
@@ -32,6 +37,18 @@ fun NarcicTubApp(
     val currentDestination = backStackEntry?.destination
     val showBottomBar = topLevelDestinations.any { dest ->
         currentDestination?.hasRoute(dest::class) == true
+    }
+
+    // PHASE 17: a pending Android-Share intake routes the user to Home,
+    // where the event is consumed (pre-filled + resolved, never auto-
+    // downloaded). The intake ViewModel here is the same activity-scoped
+    // instance the activity and HomeScreen see — single source of truth.
+    val shareViewModel: ShareIntakeViewModel = hiltViewModel()
+    val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingShare) {
+        if (pendingShare != null) {
+            navController.navigateToTopLevel(Destination.Home)
+        }
     }
 
     Scaffold(
@@ -61,7 +78,16 @@ fun NarcicTubApp(
         ) {
             composable<Destination.Home> { HomeScreen() }
             composable<Destination.Downloads> { DownloadsScreen() }
-            composable<Destination.History> { HistoryScreen() }
+            composable<Destination.History> {
+                HistoryScreen(
+                    onPlayMedia = { itemId ->
+                        navController.navigate(Destination.Playback(itemId))
+                    },
+                )
+            }
+            composable<Destination.Playback> {
+                PlaybackScreen(onBack = { navController.popBackStack() })
+            }
             composable<Destination.Settings> { SettingsScreen() }
         }
     }

@@ -17,6 +17,15 @@ sealed interface Destination {
     @Serializable
     data object History : Destination
 
+    /**
+     * PHASE 11: in-app playback of ONE completed, available local media
+     * record. Not a top-level tab — the bottom bar hides on this route.
+     * The argument is only the record id; the screen's ViewModel resolves
+     * the validated URI itself, never trusting navigation input.
+     */
+    @Serializable
+    data class Playback(val itemId: Long) : Destination
+
     @Serializable
     data object Settings : Destination
 }

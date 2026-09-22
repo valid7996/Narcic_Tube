@@ -89,7 +89,8 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     companion object {
-        const val MIN_CONCURRENT = 1
-        const val MAX_CONCURRENT = 8
+        // Single source of truth lives in AppSettings (PHASE 13).
+        const val MIN_CONCURRENT = AppSettings.MIN_CONCURRENT_DOWNLOADS
+        const val MAX_CONCURRENT = AppSettings.MAX_CONCURRENT_DOWNLOADS
     }
 }

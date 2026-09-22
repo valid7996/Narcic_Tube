@@ -13,7 +13,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
@@ -31,12 +30,30 @@ import kotlin.coroutines.coroutineContext
  * causes HttpURLConnection reads to abort with an IOException that we
  * re-check for cancellation so CANCELLED is distinguishable from FAILED.
  *
- * Security: every URL — including redirect targets — passes through
- * [NetworkDestinationPolicy] immediately before the connection is opened.
+ * Security (M-1): every URL — including every redirect target — passes
+ * BOTH policy stages immediately before that hop's connection is opened:
+ *  1. NetworkDestinationPolicy.disallowedReason — string-level (scheme,
+ *     credentials, host form, literal addresses)
+ *  2. NetworkDestinationPolicy.disallowedReasonAfterDns — resolves the
+ *     host and rejects when ANY resolved address is private/local/
+ *     metadata (all addresses, not only the first)
  * Nothing about the request (URL, headers, body) is ever logged.
+ *
+ * Known limitation (documented in NetworkDestinationPolicy): DNS
+ * rebinding between stage 2 and the socket connect — HttpURLConnection
+ * re-resolves at connect time; closing that requires socket pinning,
+ * which the review agreed to keep as a documented limitation.
  */
 @Singleton
-class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
+open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
+
+    /**
+     * Address resolver used by the stage-2 policy check. Open seam so tests
+     * can pin the all-addresses rule with crafted resolutions; production
+     * uses real DNS via the policy default.
+     */
+    protected open val dnsResolve: (String) -> List<java.net.InetAddress> =
+        NetworkDestinationPolicy::resolveAll
 
     override suspend fun download(
         url: String,
@@ -50,10 +67,10 @@ class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
         try {
             while (true) {
                 // Policy gate BEFORE every connection attempt — original URL
-                // and every redirect target alike.
-                NetworkDestinationPolicy.disallowedReason(currentUrl)?.let { reason ->
-                    throw DownloadException.Policy("Destination blocked: $reason")
-                }
+                // and every redirect target alike (M-1: both stages, so a
+                // hostname that resolves to any private address is blocked,
+                // even when it also resolves to public ones).
+                checkDestination(currentUrl)
 
                 connection = open(currentUrl)
                 val status = connection.responseCode
@@ -96,7 +113,32 @@ class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
         }
     }
 
-    private fun open(url: String): HttpURLConnection {
+    /**
+     * M-1: full destination check before EVERY connection (original URL and
+     * each redirect hop). Stage 1 is string-level; stage 2 resolves the host
+     * and rejects when ANY resolved address is private/local/metadata.
+     * Overridable seam for tests.
+     */
+    protected open suspend fun checkDestination(url: String) {
+        NetworkDestinationPolicy.disallowedReason(url)?.let { reason ->
+            throw DownloadException.Policy("Destination blocked: $reason")
+        }
+        val host = try {
+            URI(url).host?.lowercase()
+        } catch (_: Exception) {
+            null
+        } ?: throw DownloadException.Policy("Destination blocked: missing host")
+        NetworkDestinationPolicy.disallowedReasonAfterDns(host, resolve = dnsResolve)?.let { reason ->
+            throw DownloadException.Policy("Destination blocked: $reason")
+        }
+    }
+
+    /**
+     * Opens the connection for [url]. Protected seam: production builds a
+     * real HttpURLConnection; tests substitute scripted responses to prove
+     * the policy gate runs before EVERY hop (M-1).
+     */
+    protected open fun open(url: String): HttpURLConnection {
         val parsed = URL(url)
         val conn = parsed.openConnection() as HttpURLConnection
         conn.connectTimeout = CONNECT_TIMEOUT_MS

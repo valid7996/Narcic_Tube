@@ -26,4 +26,7 @@ data class HistoryItem(
     val createdAt: Instant,
     val completedAt: Instant? = null,
     val errorMessage: String? = null,
+    /** PHASE 22: real container duration (seconds) carried from the
+     *  resolved variant at enqueue time; null when unknown — never a guess. */
+    val durationSeconds: Long? = null,
 )

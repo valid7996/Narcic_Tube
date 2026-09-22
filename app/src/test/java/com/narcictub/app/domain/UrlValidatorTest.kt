@@ -140,4 +140,26 @@ class UrlValidatorTest {
         assertTrue(UrlValidator.isValidHttpUrl("http://127.0.0.1/x"))
         assertTrue(UrlValidator.isValidHttpUrl("http://192.168.1.1/x"))
     }
+
+    // ===== Phase 14: control characters must not smuggle through =====
+
+    @Test
+    fun `control characters in the url are rejected`() {
+        // Control characters in a URL can smuggle extra requests or split
+        // headers downstream — the strict URI parser must reject them.
+        assertFalse(UrlValidator.isValidHttpUrl("https://example.com/x\u0000"))
+        assertFalse(UrlValidator.isValidHttpUrl("https://example.com/x\r\nHost: evil.example.com"))
+        assertFalse(UrlValidator.isValidHttpUrl("https://exa\tmple.com/x"))
+    }
+
+    @Test
+    fun `leading whitespace is trimmed before validation by design`() {
+        // normalize()/validationMessage() trim the input first (Phase 4).
+        assertTrue(UrlValidator.isValidHttpUrl("   https://example.com"))
+    }
+
+    @Test
+    fun `whitespace inside the scheme is invalid`() {
+        assertFalse(UrlValidator.isValidHttpUrl("ht tps://example.com"))
+    }
 }

@@ -11,8 +11,11 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Secrets — never commit
+# Secrets — never commit (PHASE 16: signing material explicitly covered)
 keystore.properties
 *.jks
 *.keystore
+*.p12
+*.pfx
+narcictub-release.keystore
 !gradle/wrapper/gradle-wrapper.jar

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  L-2 (Phase 6 review): backup rules for API 31+ (dataExtractionRules).
+  The Room database persists the full download history including sourceUrl
+  (full remote URLs the user fetched) and localUri (device-local file:// or
+  MediaStore content:// paths). Restoring either onto a new device/install
+  is wrong: localUri points at paths that do not exist there, and history
+  is user-identifiable activity data that was never consented to cloud
+  backup. Only the database domain is EXCLUDED; DataStore preferences
+  (theme/download-location/concurrency — benign, non-identifying) are not
+  listed and so remain backed up by default inclusion.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" />
+    </device-transfer>
+</data-extraction-rules>
