@@ -27,6 +27,7 @@ class EnqueueDownloadUseCase @Inject constructor(
         url: String,
         durationSeconds: Long? = null,
         title: String? = null,
+        mimeType: String? = null,
     ): Result<Long> {
         val message = UrlValidator.validationMessage(url)
         if (message != null) {
@@ -43,8 +44,8 @@ class EnqueueDownloadUseCase @Inject constructor(
         return try {
             // A real resolver title (provider media) is passed through; plain
             // direct links keep the exact pre-existing enqueue call.
-            val id = if (title != null) {
-                repository.enqueueTitled(normalized, durationSeconds, title)
+            val id = if (title != null || mimeType != null) {
+                repository.enqueueTitled(normalized, durationSeconds, title, mimeType)
             } else {
                 repository.enqueue(normalized, durationSeconds)
             }

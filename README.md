@@ -54,6 +54,39 @@ Direct media links keep using the original HTTP downloader.
   suggestion (reliable whenever the app is open) are the dependable paths;
   this toggle is a best-effort bonus on top of them.
 
+### Where files are saved
+
+Every download lands inside its own app-named subfolder — never loose in
+the root of a shared collection:
+
+- Video → the system **Movies** collection, at `Movies/NarcicTub/` — shows
+  up in the phone's own Gallery/Video apps like any other video.
+- Audio-only → the system **Music** collection, at `Music/NarcicTub/`.
+- Anything else (documents, images, unknown types) → whichever location is
+  chosen in Settings (defaults to Downloads), at e.g. `Download/NarcicTub/`.
+
+This routing is automatic and based on the real resolved/observed media
+type (`DownloadLocationPolicy`) — the manual Settings location only governs
+the "anything else" case. On API 26–28 (no shared MediaStore write access)
+the same subfolder concept applies inside the app's own external-files
+directory instead.
+
+### Pause / resume
+
+Active and queued downloads can be paused (⏸) and resumed (▶) from the
+Downloads screen, in addition to cancel. Pausing keeps whatever bytes have
+already been transferred:
+
+- **Direct links** resume with a real HTTP Range request, appending only
+  the missing remainder.
+- **YouTube/Instagram (yt-dlp)** resume by leaving yt-dlp's own partial
+  files in place and letting yt-dlp continue them itself (its default
+  `--continue` behavior) — occasionally this means redoing the final
+  merge step rather than a byte-exact resume, but it never re-downloads
+  from zero.
+
+Cancelling a paused item discards the partial data instead.
+
 ### Licensing
 
 youtubedl-android and yt-dlp are GPL-3.0 / Unlicense-family components; distributing the APK means

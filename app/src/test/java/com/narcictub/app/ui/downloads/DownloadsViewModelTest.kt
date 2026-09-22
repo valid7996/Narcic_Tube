@@ -6,9 +6,11 @@ import com.narcictub.app.domain.model.HistoryItem
 import com.narcictub.app.domain.repository.DownloadRepository
 import com.narcictub.app.domain.usecase.CancelDownloadUseCase
 import com.narcictub.app.domain.usecase.ObserveDownloadsUseCase
+import com.narcictub.app.domain.usecase.PauseDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveCompletedDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveFailedDownloadsUseCase
+import com.narcictub.app.domain.usecase.ResumeDownloadUseCase
 import com.narcictub.app.domain.usecase.RetryDownloadUseCase
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -64,6 +66,21 @@ class DownloadsViewModelTest {
             cancelledIds.add(id)
         }
 
+        val pausedIds = mutableListOf<Long>()
+        val resumedIds = mutableListOf<Long>()
+        var failPause = false
+        var failResume = false
+
+        override suspend fun pause(id: Long) {
+            if (failPause) throw RuntimeException("boom")
+            pausedIds.add(id)
+        }
+
+        override suspend fun resume(id: Long) {
+            if (failResume) throw RuntimeException("boom")
+            resumedIds.add(id)
+        }
+
         override suspend fun retry(id: Long): Long? {
             if (failRetry) throw RuntimeException("boom")
             retriedIds.add(id)
@@ -100,6 +117,8 @@ class DownloadsViewModelTest {
     private fun viewModel() = DownloadsViewModel(
         observeDownloads = ObserveDownloadsUseCase(repo),
         cancelDownload = CancelDownloadUseCase(repo),
+        pauseDownload = PauseDownloadUseCase(repo),
+        resumeDownload = ResumeDownloadUseCase(repo),
         retryDownload = RetryDownloadUseCase(repo),
         removeDownload = RemoveDownloadUseCase(repo),
         removeCompleted = RemoveCompletedDownloadsUseCase(repo),
@@ -177,6 +196,40 @@ class DownloadsViewModelTest {
         vm.onCancel(7) // in-flight: suppressed
         advanceUntilIdle()
         assertEquals(listOf(7L), repo.cancelledIds)
+    }
+
+    @Test
+    fun `pause dispatches to use case by stable id`() = runTest {
+        val vm = viewModel()
+        vm.onPause(7)
+        advanceUntilIdle()
+        assertEquals(listOf(7L), repo.pausedIds)
+    }
+
+    @Test
+    fun `resume dispatches to use case by stable id`() = runTest {
+        val vm = viewModel()
+        vm.onResume(7)
+        advanceUntilIdle()
+        assertEquals(listOf(7L), repo.resumedIds)
+    }
+
+    @Test
+    fun `pause failure surfaces a safe message without stack trace`() = runTest {
+        repo.failPause = true
+        val vm = viewModel()
+        vm.onPause(7)
+        advanceUntilIdle()
+        assertEquals("Couldn't pause that download.", vm.transient.value.errorMessage)
+    }
+
+    @Test
+    fun `resume failure surfaces a safe message without stack trace`() = runTest {
+        repo.failResume = true
+        val vm = viewModel()
+        vm.onResume(7)
+        advanceUntilIdle()
+        assertEquals("Couldn't resume that download.", vm.transient.value.errorMessage)
     }
 
     @Test

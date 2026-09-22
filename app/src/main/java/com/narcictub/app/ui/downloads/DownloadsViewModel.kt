@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.narcictub.app.domain.model.DownloadsOverview
 import com.narcictub.app.domain.usecase.CancelDownloadUseCase
 import com.narcictub.app.domain.usecase.ObserveDownloadsUseCase
+import com.narcictub.app.domain.usecase.PauseDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveCompletedDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveFailedDownloadsUseCase
+import com.narcictub.app.domain.usecase.ResumeDownloadUseCase
 import com.narcictub.app.domain.usecase.RetryDownloadUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -31,6 +33,8 @@ import javax.inject.Inject
 class DownloadsViewModel @Inject constructor(
     observeDownloads: ObserveDownloadsUseCase,
     private val cancelDownload: CancelDownloadUseCase,
+    private val pauseDownload: PauseDownloadUseCase,
+    private val resumeDownload: ResumeDownloadUseCase,
     private val retryDownload: RetryDownloadUseCase,
     private val removeDownload: RemoveDownloadUseCase,
     private val removeCompleted: RemoveCompletedDownloadsUseCase,
@@ -55,6 +59,36 @@ class DownloadsViewModel @Inject constructor(
                 throw e
             } catch (_: Exception) {
                 _transient.update { it.copy(errorMessage = CANCEL_FAILED) }
+            } finally {
+                clearPending(id)
+            }
+        }
+    }
+
+    fun onPause(id: Long) {
+        if (!markPending(id)) return
+        viewModelScope.launch {
+            try {
+                pauseDownload(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _transient.update { it.copy(errorMessage = PAUSE_FAILED) }
+            } finally {
+                clearPending(id)
+            }
+        }
+    }
+
+    fun onResume(id: Long) {
+        if (!markPending(id)) return
+        viewModelScope.launch {
+            try {
+                resumeDownload(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _transient.update { it.copy(errorMessage = RESUME_FAILED) }
             } finally {
                 clearPending(id)
             }
@@ -146,6 +180,8 @@ class DownloadsViewModel @Inject constructor(
 
     companion object {
         private const val CANCEL_FAILED = "Couldn't cancel that download."
+        private const val PAUSE_FAILED = "Couldn't pause that download."
+        private const val RESUME_FAILED = "Couldn't resume that download."
         private const val RETRY_UNAVAILABLE = "That download can't be retried right now."
         private const val RETRY_FAILED = "Couldn't re-queue that download."
         private const val REMOVE_FAILED = "Couldn't remove that download."

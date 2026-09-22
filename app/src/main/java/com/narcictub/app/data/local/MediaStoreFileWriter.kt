@@ -3,6 +3,7 @@ package com.narcictub.app.data.local
 import android.content.Context
 import android.net.Uri
 import android.os.Build
+import com.narcictub.app.domain.DownloadLocationPolicy
 import com.narcictub.app.domain.FileNameSanitizer
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.repository.SettingsRepository
@@ -61,13 +62,22 @@ open class MediaStoreFileWriter @Inject constructor(
         mimeType: String?,
         subDirectory: String?,
     ): Uri = withContext(Dispatchers.IO) {
-        val location = settingsRepository.settings.first().downloadLocation
+        val settingsLocation = settingsRepository.settings.first().downloadLocation
+        // Video/audio always goes to the matching system collection (so it
+        // shows up in the phone's own Gallery/Video and Music apps) —
+        // regardless of the manual Settings choice, which only governs
+        // everything else. See DownloadLocationPolicy.
+        val location = DownloadLocationPolicy.effectiveLocation(mimeType, settingsLocation)
         val safeName = FileNameSanitizer.sanitize(
             displayName,
             fallback = stagingFile.nameWithoutExtension.ifEmpty { "download" },
         )
+        // Every destination gets its own app-named subfolder — never a bare
+        // file loose in the user's shared collection. A caller-supplied
+        // subDirectory (tests, future overrides) still wins when given.
+        val effectiveSubDirectory = subDirectory ?: DownloadLocationPolicy.relativePath(location)
         if (deviceSdkInt() >= Build.VERSION_CODES.Q) {
-            publishViaQPlus(location, stagingFile, safeName, mimeType, subDirectory)
+            publishViaQPlus(location, stagingFile, safeName, mimeType, effectiveSubDirectory)
         } else {
             publishViaLegacy(location, stagingFile, safeName)
         }

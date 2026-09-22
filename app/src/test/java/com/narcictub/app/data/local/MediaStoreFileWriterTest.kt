@@ -251,6 +251,10 @@ class MediaStoreFileWriterTest {
         }
 
         assertTrue(result.isFailure)
-        assertEquals("no partial publish may survive a failure", 0, dir.listFiles()?.size ?: 0)
+        // The app's own subfolder (created up front, same as any directory
+        // creation) is expected to exist; what must NOT survive is any
+        // trace of the failed copy inside it.
+        val appFolder = File(dir, com.narcictub.app.domain.DownloadLocationPolicy.legacySubFolder())
+        assertEquals("no partial publish may survive a failure", 0, appFolder.listFiles()?.size ?: 0)
     }
 }

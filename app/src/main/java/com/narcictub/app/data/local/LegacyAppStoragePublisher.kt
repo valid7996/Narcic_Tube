@@ -2,6 +2,7 @@ package com.narcictub.app.data.local
 
 import android.content.Context
 import android.os.Environment
+import com.narcictub.app.domain.DownloadLocationPolicy
 import com.narcictub.app.domain.model.DownloadLocation
 import java.io.File
 import java.io.IOException
@@ -55,8 +56,10 @@ internal object LegacyAppStoragePublisher {
             DownloadLocation.DCIM -> Environment.DIRECTORY_DCIM
         }
         // getExternalFilesDir creates the folder; null only when external
-        // storage is unavailable → internal fallback.
-        return context.getExternalFilesDir(folder) ?: File(context.filesDir, folder)
+        // storage is unavailable → internal fallback. Same app subfolder
+        // concept as the Q+ path, so files are never loose at the root.
+        val base = context.getExternalFilesDir(folder) ?: File(context.filesDir, folder)
+        return File(base, DownloadLocationPolicy.legacySubFolder())
     }
 
     /**

@@ -18,6 +18,8 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Downloading
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -75,6 +77,8 @@ fun DownloadsScreen(
         overview = overview,
         transient = transient,
         onCancel = viewModel::onCancel,
+        onPause = viewModel::onPause,
+        onResume = viewModel::onResume,
         onRetry = viewModel::onRetry,
         onRemove = viewModel::onRemove,
         onClearFinished = viewModel::onRemoveCompletedConfirmed,
@@ -90,6 +94,8 @@ fun DownloadsScreenContent(
     overview: DownloadsOverview,
     transient: DownloadsTransientUiState,
     onCancel: (Long) -> Unit,
+    onPause: (Long) -> Unit,
+    onResume: (Long) -> Unit,
     onRetry: (Long) -> Unit,
     onRemove: (Long) -> Unit,
     onClearFinished: () -> Unit,
@@ -148,13 +154,13 @@ fun DownloadsScreenContent(
                 if (state.active.isNotEmpty()) {
                     sectionHeader("Active")
                     items(state.active, key = { "active-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel)
+                        ActiveDownloadCard(row = row, onCancel = onCancel, onPause = onPause, onResume = onResume)
                     }
                 }
                 if (state.queue.isNotEmpty()) {
                     sectionHeader("Queued")
                     items(state.queue, key = { "queue-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel)
+                        ActiveDownloadCard(row = row, onCancel = onCancel, onPause = onPause, onResume = onResume)
                     }
                 }
                 if (state.finished.isNotEmpty()) {
@@ -280,11 +286,13 @@ private fun LazyListScope.sectionHeader(title: String) {
     }
 }
 
-/** Active (downloading/paused) or queued row: title, host, live progress, cancel. */
+/** Active (downloading/paused) or queued row: title, host, live progress, pause/resume/cancel. */
 @Composable
 private fun ActiveDownloadCard(
     row: UiDownload,
     onCancel: (Long) -> Unit,
+    onPause: (Long) -> Unit,
+    onResume: (Long) -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -311,13 +319,27 @@ private fun ActiveDownloadCard(
                         bytes = row.completedBytes,
                     )
                 }
+                if (offersPauseAction(row.status)) {
+                    IconButton(onClick = { onPause(row.id) }) {
+                        Icon(Icons.Filled.Pause, contentDescription = "Pause download")
+                    }
+                }
+                if (offersResumeAction(row.status)) {
+                    IconButton(onClick = { onResume(row.id) }) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = "Resume download")
+                    }
+                }
                 if (offersCancelAction(row.status)) {
                     IconButton(onClick = { onCancel(row.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = "Cancel download")
                     }
                 }
             }
-            if (row.status == DownloadStatus.DOWNLOADING) {
+            // A paused row keeps showing its last-known progress (the
+            // repository deliberately doesn't clear it — see
+            // DownloadRepositoryImpl.pause) so the bar doesn't jump to
+            // empty and back; it's just frozen instead of animating.
+            if (row.status == DownloadStatus.DOWNLOADING || row.status == DownloadStatus.PAUSED) {
                 val fraction = row.progress?.fraction
                 if (fraction != null) {
                     // Known Content-Length: real determinate progress.
@@ -325,9 +347,11 @@ private fun ActiveDownloadCard(
                         progress = { fraction },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                } else {
+                } else if (row.status == DownloadStatus.DOWNLOADING) {
                     // Unknown Content-Length: honest indeterminate bar —
-                    // never an invented percentage.
+                    // never an invented percentage. Not shown while paused:
+                    // an indeterminate spinner would imply activity there
+                    // isn't any right now.
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
@@ -543,7 +567,7 @@ private fun DownloadsEmptyPreview() {
             // Genuinely empty (a snapshot arrived with zero rows).
             overview = DownloadsOverview(isLoading = false),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -557,7 +581,7 @@ private fun DownloadsLoadingPreview() {
             // No snapshot yet — loading, not empty.
             overview = DownloadsOverview(),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -608,7 +632,7 @@ private fun DownloadsActivePreview() {
                 ),
             ),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }

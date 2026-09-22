@@ -73,7 +73,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
             listOf(InetAddress.getByName("93.184.216.34"))
         }
 
-        override fun open(url: String): HttpURLConnection {
+        override fun open(url: String, resumeFromBytes: Long): HttpURLConnection {
             openedUrls.add(url)
             return ScriptedConnection(hops[url] ?: error("no hop scripted for $url"))
         }
@@ -130,7 +130,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
                 }
             }
 
-            override fun open(url: String): HttpURLConnection {
+            override fun open(url: String, resumeFromBytes: Long): HttpURLConnection {
                 opened.add(url)
                 return ScriptedConnection(hops[url] ?: error("no hop scripted for $url"))
             }
@@ -154,7 +154,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
                 listOf(InetAddress.getByName("93.184.216.34"), InetAddress.getByName("192.168.0.9"))
             }
 
-            override fun open(url: String): HttpURLConnection {
+            override fun open(url: String, resumeFromBytes: Long): HttpURLConnection {
                 opened.add(url)
                 return ScriptedConnection(Hop(200))
             }
@@ -183,7 +183,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
                 }
             }
 
-            override fun open(url: String): HttpURLConnection {
+            override fun open(url: String, resumeFromBytes: Long): HttpURLConnection {
                 opened.add(url)
                 return ScriptedConnection(hops[url] ?: error("no hop scripted for $url"))
             }
@@ -203,7 +203,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
             override val dnsResolve: (String) -> List<InetAddress> =
                 { _ -> throw java.net.UnknownHostException("nx") }
 
-            override fun open(url: String): HttpURLConnection = ScriptedConnection(Hop(200))
+            override fun open(url: String, resumeFromBytes: Long): HttpURLConnection = ScriptedConnection(Hop(200))
         }
 
         val result = runCatching {
@@ -240,7 +240,7 @@ class HttpUrlConnectionDownloaderPolicyTest {
                 emptyList()
             }
 
-            override fun open(url: String): HttpURLConnection {
+            override fun open(url: String, resumeFromBytes: Long): HttpURLConnection {
                 opened.add(url)
                 return ScriptedConnection(Hop(200))
             }

@@ -31,17 +31,42 @@ interface DownloadRepository {
     /**
      * Like [enqueue], but carries the REAL title the resolver found. Needed
      * for provider media (YouTube/Instagram) whose URL has no meaningful file
-     * name ("watch", "p"). Implementations that don't care about titles keep
-     * the default, which simply ignores it.
+     * name ("watch", "p"). [mimeType] is the resolved variant's real MIME
+     * (when known) — an early hint used to route the finished file to the
+     * matching Movies/Music collection even if the live download response
+     * doesn't repeat a usable Content-Type. Implementations that don't care
+     * about either keep the default, which simply ignores them.
      */
-    suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long =
-        enqueue(sourceUrl, durationSeconds)
+    suspend fun enqueueTitled(
+        sourceUrl: String,
+        durationSeconds: Long?,
+        title: String?,
+        mimeType: String? = null,
+    ): Long = enqueue(sourceUrl, durationSeconds)
 
     /**
      * User-initiated cancel of a queued or active download. Terminal rows
      * (COMPLETED) are never downgraded; see the implementation's L-1 guard.
      */
     suspend fun cancel(id: Long)
+
+    /**
+     * Pauses a QUEUED or DOWNLOADING item: the transfer stops, but — unlike
+     * [cancel] — whatever bytes already reached the staging file are kept,
+     * so [resume] can continue instead of starting over. A no-op for any
+     * other status (including an item already PAUSED). Default no-op for
+     * implementations that don't support pausing.
+     */
+    suspend fun pause(id: Long) {}
+
+    /**
+     * Resumes a PAUSED item from wherever it left off (the file streamer
+     * decides how much of that is actually honored — see [pause]; a full
+     * restart is still a correct, if less efficient, resume). A no-op for
+     * any status other than PAUSED. Default no-op for implementations that
+     * don't support pausing.
+     */
+    suspend fun resume(id: Long) {}
 
     /**
      * Re-queues a FAILED (or CANCELLED) download from its stored source

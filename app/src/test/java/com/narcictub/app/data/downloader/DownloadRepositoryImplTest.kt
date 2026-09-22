@@ -68,12 +68,16 @@ class DownloadRepositoryImplTest {
 
         private val gate = CompletableDeferred<Unit>()
 
+        var lastResumeFromBytes: Long? = null
+
         override suspend fun download(
             url: String,
             destination: File,
+            resumeFromBytes: Long,
             onProgress: (DownloadProgress) -> Unit,
         ): DownloadFileResult {
             lastDestination = destination
+            lastResumeFromBytes = resumeFromBytes
             if (hang) gate.await() // never completes until cancelled
             failWith?.let { throw it }
             onProgress(DownloadProgress(5, totalBytes = 10))
@@ -196,6 +200,7 @@ class DownloadRepositoryImplTest {
         override suspend fun download(
             url: String,
             destination: File,
+            resumeFromBytes: Long,
             onProgress: (DownloadProgress) -> Unit,
         ): DownloadFileResult {
             calls += 1
@@ -394,6 +399,136 @@ class DownloadRepositoryImplTest {
         assertEquals(DownloadStatus.CANCELLED, history.get(id)!!.status)
         val leftovers = staging.listFiles()
         assertTrue(leftovers == null || leftovers.isEmpty())
+    }
+
+    // ===== pause / resume =====
+
+    /**
+     * Actually writes real bytes to [destination] (unlike RecordingDownloader,
+     * which is a pure fake) so pause/resume tests can observe real partial
+     * bytes surviving on disk. [pauseAfterFirstChunk]: on a fresh (non-
+     * resumed) call, writes [firstChunkSize] bytes then hangs until the
+     * coroutine is cancelled — simulating "paused mid-transfer". A resumed
+     * call (resumeFromBytes > 0) always finishes, appending the remainder.
+     */
+    private class ByteWritingDownloader(private val totalSize: Int = 10, private val firstChunkSize: Int = 4) : FileDownloader {
+        var pauseAfterFirstChunk = false
+        val firstChunkWritten = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var lastResumeFromBytes: Long = -1
+        var calls = 0
+
+        override suspend fun download(
+            url: String,
+            destination: File,
+            resumeFromBytes: Long,
+            onProgress: (DownloadProgress) -> Unit,
+        ): DownloadFileResult {
+            calls += 1
+            lastResumeFromBytes = resumeFromBytes
+            if (pauseAfterFirstChunk && resumeFromBytes == 0L) {
+                java.io.FileOutputStream(destination).use { it.write(ByteArray(firstChunkSize) { 1 }) }
+                onProgress(DownloadProgress(firstChunkSize.toLong(), totalBytes = totalSize.toLong()))
+                firstChunkWritten.complete(Unit)
+                kotlinx.coroutines.awaitCancellation() // stays "in flight" until pause() cancels it
+            }
+            val remaining = totalSize - resumeFromBytes.toInt()
+            if (remaining > 0) {
+                java.io.FileOutputStream(destination, resumeFromBytes > 0L).use {
+                    it.write(ByteArray(remaining) { 2 })
+                }
+            }
+            onProgress(DownloadProgress(totalSize.toLong(), totalBytes = totalSize.toLong()))
+            return DownloadFileResult(bytesDownloaded = totalSize.toLong(), contentType = "video/mp4")
+        }
+    }
+
+    @Test
+    fun `pausing an active download keeps its partial bytes and marks PAUSED`() = testScope.runTest {
+        val downloader = ByteWritingDownloader().apply { pauseAfterFirstChunk = true }
+        val history = FakeHistoryRepository()
+        val staging = tmp.newFolder()
+        val (repo, _) = repository(downloader, history).also { (r, _) -> r.overrideStaging(staging) }
+
+        val id = repo.enqueue("https://example.com/video.mp4")
+        advanceUntilIdle()
+        assertTrue(downloader.firstChunkWritten.isCompleted)
+
+        repo.pause(id)
+        advanceUntilIdle()
+
+        assertEquals(DownloadStatus.PAUSED, history.get(id)!!.status)
+        // The partial file is still there, with exactly the bytes already
+        // written before the pause — never deleted, never truncated.
+        val leftover = staging.listFiles()?.singleOrNull()
+        assertNotNull("expected the partial staging file to survive the pause", leftover)
+        assertEquals(4L, leftover!!.length())
+    }
+
+    @Test
+    fun `resuming a paused download continues from the bytes already on disk`() = testScope.runTest {
+        val downloader = ByteWritingDownloader().apply { pauseAfterFirstChunk = true }
+        val history = FakeHistoryRepository()
+        val (repo, _) = repository(downloader, history)
+
+        val id = repo.enqueue("https://example.com/video.mp4")
+        advanceUntilIdle()
+        repo.pause(id)
+        advanceUntilIdle()
+        assertEquals(DownloadStatus.PAUSED, history.get(id)!!.status)
+
+        repo.resume(id)
+        advanceUntilIdle()
+
+        // The transport was asked to continue from exactly the 4 bytes the
+        // first (paused) attempt had already written — never re-fetched
+        // from scratch.
+        assertEquals(4L, downloader.lastResumeFromBytes)
+        val item = history.get(id)!!
+        assertEquals(DownloadStatus.COMPLETED, item.status)
+        assertEquals(10L, item.sizeBytes)
+    }
+
+    @Test
+    fun `cancelling a paused download deletes the partial file`() = testScope.runTest {
+        val downloader = ByteWritingDownloader().apply { pauseAfterFirstChunk = true }
+        val history = FakeHistoryRepository()
+        val staging = tmp.newFolder()
+        val (repo, _) = repository(downloader, history).also { (r, _) -> r.overrideStaging(staging) }
+
+        val id = repo.enqueue("https://example.com/video.mp4")
+        advanceUntilIdle()
+        repo.pause(id)
+        advanceUntilIdle()
+
+        repo.cancel(id)
+        advanceUntilIdle()
+
+        assertEquals(DownloadStatus.CANCELLED, history.get(id)!!.status)
+        val leftovers = staging.listFiles()
+        assertTrue(leftovers == null || leftovers.isEmpty())
+
+        // A cancelled row is not resumable — resume() is then a no-op.
+        repo.resume(id)
+        advanceUntilIdle()
+        assertEquals(DownloadStatus.CANCELLED, history.get(id)!!.status)
+    }
+
+    @Test
+    fun `pausing a still-queued download parks it without ever starting the transport`() = testScope.runTest {
+        val blocker = RecordingDownloader().apply { hang = true }
+        val history = FakeHistoryRepository()
+        val (repo, _) = repository(blocker, history, concurrent = 1)
+
+        val busyId = repo.enqueue("https://example.com/busy.mp4")
+        val queuedId = repo.enqueue("https://example.com/queued.mp4")
+        advanceUntilIdle()
+        assertEquals(DownloadStatus.QUEUED, history.get(queuedId)!!.status)
+
+        repo.pause(queuedId)
+        advanceUntilIdle()
+
+        assertEquals(DownloadStatus.PAUSED, history.get(queuedId)!!.status)
+        assertEquals(DownloadStatus.DOWNLOADING, history.get(busyId)!!.status)
     }
 
     // ===== L-1: commit-phase cancellation protection =====
