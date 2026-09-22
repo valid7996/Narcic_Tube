@@ -2,6 +2,7 @@ package com.narcictub.app.data.ytdlp
 
 import android.content.Context
 import com.yausername.ffmpeg.FFmpeg
+import com.yausername.youtubedl_android.UpdateChannel
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -70,7 +71,7 @@ open class YtDlpEngine @Inject constructor(
             if (AUTO_UPDATE_ON_LAUNCH) {
                 try {
                     withContext(Dispatchers.IO) {
-                        YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
+                        YoutubeDL.getInstance().updateYoutubeDL(context, UpdateChannel.STABLE)
                     }
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e

@@ -99,7 +99,8 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
                     }
                     // The server says there is nothing beyond what we asked
                     // for — the file on disk is already the complete file.
-                    status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && resumeOffset > 0L -> {
+                    // java.net.HttpURLConnection has no named constant for 416.
+                    status == HTTP_RANGE_NOT_SATISFIABLE && resumeOffset > 0L -> {
                         val size = destination.length()
                         onProgress(DownloadProgress(downloadedBytes = size, totalBytes = size))
                         return@withContext DownloadFileResult(bytesDownloaded = size, contentType = connection.contentType)
@@ -227,5 +228,6 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
         private const val MAX_REDIRECTS = 5
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
+        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
     }
 }
