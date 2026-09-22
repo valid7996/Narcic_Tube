@@ -99,7 +99,7 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
                     }
                     // The server says there is nothing beyond what we asked
                     // for — the file on disk is already the complete file.
-                    status == HttpURLConnection.HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && resumeOffset > 0L -> {
+                    status == HTTP_REQUESTED_RANGE_NOT_SATISFIABLE && resumeOffset > 0L -> {
                         val size = destination.length()
                         onProgress(DownloadProgress(downloadedBytes = size, totalBytes = size))
                         return@withContext DownloadFileResult(bytesDownloaded = size, contentType = connection.contentType)
@@ -222,6 +222,9 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
     }
 
     companion object {
+        // HttpURLConnection defines no constant for 416 (its status constants
+        // skip from 415 HTTP_UNSUPPORTED_TYPE to 500 HTTP_INTERNAL_ERROR).
+        private const val HTTP_REQUESTED_RANGE_NOT_SATISFIABLE = 416
         private const val BUFFER_SIZE = 16 * 1024
         private const val PROGRESS_EVERY_BYTES = 64 * 1024
         private const val MAX_REDIRECTS = 5
