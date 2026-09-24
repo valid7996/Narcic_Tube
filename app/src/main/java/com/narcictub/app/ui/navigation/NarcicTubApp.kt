@@ -21,9 +21,11 @@ import androidx.navigation.compose.rememberNavController
 import com.narcictub.app.ui.downloads.DownloadsScreen
 import com.narcictub.app.ui.history.HistoryScreen
 import com.narcictub.app.ui.home.HomeScreen
+import com.narcictub.app.ui.home.PendingShare
 import com.narcictub.app.ui.home.ShareIntakeViewModel
 import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
+import com.narcictub.app.ui.share.ShareDownloadScreen
 
 /**
  * Root app scaffold: bottom bar + NavHost with type-safe routes.
@@ -39,15 +41,25 @@ fun NarcicTubApp(
         currentDestination?.hasRoute(dest::class) == true
     }
 
-    // PHASE 17: a pending Android-Share intake routes the user to Home,
-    // where the event is consumed (pre-filled + resolved, never auto-
-    // downloaded). The intake ViewModel here is the same activity-scoped
-    // instance the activity and HomeScreen see — single source of truth.
+    // PHASE 17: an Android-Share intake is processed once, at the nav root.
+    // A validated URL opens the dedicated Share download screen ("Download
+    // as") where the user picks a format and queues the download; a share
+    // with no usable link routes to Home with its safe message. The intake
+    // ViewModel here is the same activity-scoped instance the activity and
+    // the screens see — single source of truth.
     val shareViewModel: ShareIntakeViewModel = hiltViewModel()
     val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
     LaunchedEffect(pendingShare) {
-        if (pendingShare != null) {
-            navController.navigateToTopLevel(Destination.Home)
+        when (val share = pendingShare) {
+            is PendingShare.Url -> {
+                shareViewModel.onConsumed()
+                navController.navigate(Destination.ShareDownload(share.url))
+            }
+            is PendingShare.Invalid -> {
+                shareViewModel.onConsumed()
+                navController.navigateToTopLevel(Destination.Home)
+            }
+            null -> Unit
         }
     }
 
@@ -87,6 +99,11 @@ fun NarcicTubApp(
             }
             composable<Destination.Playback> {
                 PlaybackScreen(onBack = { navController.popBackStack() })
+            }
+            composable<Destination.ShareDownload> {
+                ShareDownloadScreen(
+                    onQueued = { navController.navigateToTopLevel(Destination.Downloads) },
+                )
             }
             composable<Destination.Settings> { SettingsScreen() }
         }

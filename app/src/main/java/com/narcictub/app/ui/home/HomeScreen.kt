@@ -65,24 +65,21 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
-    // PHASE 17: consume one-shot Android-Share intake events. The intake
-    // ViewModel is activity-scoped so the event survives tab switches and
-    // rotation, and is consumed exactly once (no duplicate resolve after
-    // recreation). Sharing never auto-downloads — the user still chooses.
+    // PHASE 17 / share-screen split: the nav ROOT owns PendingShare.Url —
+    // it opens the dedicated Share download screen. Home only consumes the
+    // Invalid case, so its safe message is visible where the user can paste
+    // a link manually. Each event kind is consumed by exactly one owner.
     val shareViewModel: ShareIntakeViewModel = hiltViewModel(
         viewModelStoreOwner = LocalContext.current as ViewModelStoreOwner,
     )
     val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
     LaunchedEffect(pendingShare) {
         when (val share = pendingShare) {
-            is PendingShare.Url -> {
-                viewModel.onSharedUrlReceived(share.url)
-                shareViewModel.onConsumed()
-            }
             is PendingShare.Invalid -> {
                 viewModel.onShareRejected(share.message)
                 shareViewModel.onConsumed()
             }
+            is PendingShare.Url -> Unit
             null -> Unit
         }
     }
