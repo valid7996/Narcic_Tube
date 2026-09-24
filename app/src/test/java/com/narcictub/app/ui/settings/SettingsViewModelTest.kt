@@ -6,6 +6,7 @@ import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.domain.repository.SettingsRepository
 import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
+import com.narcictub.app.domain.usecase.SetCustomDownloadFolderUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
 import java.io.IOException
@@ -45,6 +46,7 @@ class SettingsViewModelTest {
 
         val themeWrites = mutableListOf<ThemeMode>()
         val locationWrites = mutableListOf<DownloadLocation>()
+        val folderWrites = mutableListOf<String?>()
         val concurrentWrites = mutableListOf<Int>()
 
         override val settings: kotlinx.coroutines.flow.Flow<AppSettings>
@@ -66,6 +68,12 @@ class SettingsViewModelTest {
             state.value = state.value.copy(downloadLocation = location)
         }
 
+        override suspend fun setCustomDownloadFolder(uri: String?) {
+            if (failWrites) throw IOException("boom")
+            folderWrites.add(uri)
+            state.value = state.value.copy(customDownloadFolderUri = uri)
+        }
+
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
 
@@ -82,6 +90,7 @@ class SettingsViewModelTest {
         observeSettings = ObserveSettingsUseCase(repository),
         setThemeMode = SetThemeModeUseCase(repository),
         setDownloadLocation = SetDownloadLocationUseCase(repository),
+        setCustomDownloadFolder = SetCustomDownloadFolderUseCase(repository),
         setConcurrentDownloads = SetConcurrentDownloadsUseCase(repository),
     )
 
@@ -191,6 +200,28 @@ class SettingsViewModelTest {
 
         assertEquals("out-of-range must be gated at the use case", 0, repository.concurrentWrites.size)
         assertNotNull(vm.uiState.value.errorMessage)
+    }
+
+    @Test
+    fun `custom folder selection writes through and clears back`() = runTest {
+        val vm = viewModel()
+        val job = collect(vm)
+        advanceUntilIdle()
+
+        val uri = "content://com.android.externalstorage.documents/tree/primary%3ADownload/Foo"
+        vm.onCustomFolderSelected(uri)
+        advanceUntilIdle()
+
+        assertEquals(listOf<String?>(uri), repository.folderWrites)
+        assertEquals(uri, vm.uiState.value.customFolderUri)
+        assertNull(vm.uiState.value.errorMessage)
+
+        vm.onCustomFolderSelected(null)
+        advanceUntilIdle()
+
+        assertEquals(listOf(uri, null), repository.folderWrites)
+        assertNull(vm.uiState.value.customFolderUri)
+        job.cancel()
     }
 
     @Test

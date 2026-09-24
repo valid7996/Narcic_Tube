@@ -14,6 +14,12 @@ interface SettingsRepository {
 
     suspend fun setDownloadLocation(location: DownloadLocation)
 
+    /**
+     * Persists the custom download folder (SAF tree URI) or clears it with
+     * null. The URI string is opaque — produced only by the folder picker.
+     */
+    suspend fun setCustomDownloadFolder(uri: String?)
+
     suspend fun setWifiOnly(enabled: Boolean)
 
     suspend fun setConcurrentDownloads(count: Int)

@@ -21,6 +21,7 @@ class SettingsUseCaseTest {
     private class RecordingSettingsRepository : SettingsRepository {
         val themeWrites = mutableListOf<ThemeMode>()
         val locationWrites = mutableListOf<DownloadLocation>()
+        val folderWrites = mutableListOf<String?>()
         val concurrentWrites = mutableListOf<Int>()
         var fail = false
 
@@ -33,6 +34,10 @@ class SettingsUseCaseTest {
         override suspend fun setDownloadLocation(location: DownloadLocation) {
             if (fail) throw IOException("boom")
             locationWrites.add(location)
+        }
+        override suspend fun setCustomDownloadFolder(uri: String?) {
+            if (fail) throw IOException("boom")
+            folderWrites.add(uri)
         }
         override suspend fun setWifiOnly(enabled: Boolean) {
             if (fail) throw IOException("boom")
@@ -132,6 +137,38 @@ class SettingsUseCaseTest {
         val result = setLocation(DownloadLocation.MOVIES)
         assertTrue(result.isSuccess)
         assertEquals(listOf(DownloadLocation.MOVIES), repository.locationWrites)
+    }
+
+    // ===== custom download folder delegation =====
+
+    @Test
+    fun `custom folder setter delegates the picked tree uri`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        val uri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val result = setFolder(uri)
+        assertTrue(result.isSuccess)
+        assertEquals(listOf<String?>(uri), repository.folderWrites)
+    }
+
+    @Test
+    fun `custom folder setter delegates a null clear`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        assertTrue(setFolder("content://x/tree/y").isSuccess)
+        val result = setFolder(null)
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("content://x/tree/y", null), repository.folderWrites)
+    }
+
+    @Test
+    fun `custom folder repository failure maps to Result failure`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        repository.fail = true
+        val result = setFolder("content://x/tree/y")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
     }
 
     @Test

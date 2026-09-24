@@ -1,5 +1,8 @@
 package com.narcictub.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -110,6 +113,10 @@ fun SettingsScreen(
                 selected = state.downloadLocation,
                 onSelect = viewModel::onDownloadLocationSelected,
             )
+            CustomFolderSection(
+                customFolderUri = state.customFolderUri,
+                onFolderPicked = viewModel::onCustomFolderSelected,
+            )
             ConcurrentDownloadsSection(
                 value = state.concurrentDownloads,
                 onSelect = viewModel::onConcurrentDownloadsSelected,
@@ -196,6 +203,85 @@ private fun DownloadLocationSection(
         }
     }
 }
+
+/**
+ * Custom save folder: a user-picked SAF document tree that overrides the
+ * preset location above. The persistable grant is taken here — the picker
+ * result only stays usable across restarts with it — and released again
+ * when the folder is removed. Writes go through the view model; a failed
+ * persist shows the shared error banner.
+ */
+@Composable
+private fun CustomFolderSection(
+    customFolderUri: String?,
+    onFolderPicked: (String?) -> Unit,
+) {
+    val context = LocalContext.current
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            onFolderPicked(uri.toString())
+        }
+    }
+
+    Text(
+        text = "Custom folder",
+        style = MaterialTheme.typography.bodyMedium,
+        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(12.dp)) {
+            Text(
+                text = customFolderUri?.let { folderDisplayName(it) }
+                    ?: "Off — files follow the location above.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (customFolderUri != null) {
+                Text(
+                    text = "New downloads are saved here, overriding the location above.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(onClick = { picker.launch(null) }) {
+                    Text(if (customFolderUri == null) "Choose folder…" else "Change folder…")
+                }
+                if (customFolderUri != null) {
+                    TextButton(onClick = {
+                        runCatching {
+                            context.contentResolver.releasePersistableUriPermission(
+                                Uri.parse(customFolderUri),
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                            )
+                        }
+                        onFolderPicked(null)
+                    }) {
+                        Text("Remove")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Human-readable folder name from a SAF tree URI ("primary:Music/Foo" → "Music/Foo"). */
+private fun folderDisplayName(uriText: String): String =
+    runCatching {
+        val treeId = DocumentsContract.getTreeDocumentId(Uri.parse(uriText))
+        treeId.substringAfter(':', treeId).ifBlank { "Selected folder" }
+    }.getOrDefault("Selected folder")
 
 /** Concurrent downloads: bounded slider; out-of-range values are impossible. */
 @Composable

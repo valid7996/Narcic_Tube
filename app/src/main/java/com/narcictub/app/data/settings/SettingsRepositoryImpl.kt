@@ -29,6 +29,7 @@ val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
 private object SettingsKeys {
     val THEME = stringPreferencesKey("theme")
     val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
+    val CUSTOM_FOLDER_URI = stringPreferencesKey("custom_folder_uri")
     val WIFI_ONLY = booleanPreferencesKey("wifi_only")
     val CONCURRENT_DOWNLOADS = intPreferencesKey("concurrent_downloads")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
@@ -59,6 +60,8 @@ class SettingsRepositoryImpl @Inject constructor(
                 downloadLocation = prefs[SettingsKeys.DOWNLOAD_LOCATION]
                     ?.let { runCatching { DownloadLocation.valueOf(it) }.getOrNull() }
                     ?: DownloadLocation.DOWNLOADS,
+                customDownloadFolderUri = prefs[SettingsKeys.CUSTOM_FOLDER_URI]
+                    ?.takeIf { it.isNotBlank() },
                 wifiOnly = prefs[SettingsKeys.WIFI_ONLY] ?: true,
                 concurrentDownloads = (prefs[SettingsKeys.CONCURRENT_DOWNLOADS] ?: 3)
                     .coerceIn(MIN_CONCURRENT, MAX_CONCURRENT),
@@ -72,6 +75,13 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setDownloadLocation(location: DownloadLocation) {
         dataStore.edit { it[SettingsKeys.DOWNLOAD_LOCATION] = location.name }
+    }
+
+    override suspend fun setCustomDownloadFolder(uri: String?) {
+        dataStore.edit { prefs ->
+            if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.CUSTOM_FOLDER_URI)
+            else prefs[SettingsKeys.CUSTOM_FOLDER_URI] = uri
+        }
     }
 
     override suspend fun setWifiOnly(enabled: Boolean) {

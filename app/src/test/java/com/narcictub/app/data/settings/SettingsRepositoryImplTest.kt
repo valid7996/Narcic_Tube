@@ -21,6 +21,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -67,6 +68,29 @@ class SettingsRepositoryImplTest {
         val repository = newRepository()
         repository.setDownloadLocation(DownloadLocation.MUSIC)
         assertEquals(DownloadLocation.MUSIC, repository.settings.first().downloadLocation)
+    }
+
+    @Test
+    fun `custom download folder round-trips`() = testScope.runTest {
+        val repository = newRepository()
+        val uri = "content://com.android.externalstorage.documents/tree/primary%3ADownload/Foo"
+        repository.setCustomDownloadFolder(uri)
+        assertEquals(uri, repository.settings.first().customDownloadFolderUri)
+    }
+
+    @Test
+    fun `custom download folder clears back to null`() = testScope.runTest {
+        val repository = newRepository()
+        repository.setCustomDownloadFolder("content://com.android.externalstorage.documents/tree/x")
+        repository.setCustomDownloadFolder(null)
+        assertNull(repository.settings.first().customDownloadFolderUri)
+    }
+
+    @Test
+    fun `blank custom download folder is stored as unset`() = testScope.runTest {
+        val repository = newRepository()
+        repository.setCustomDownloadFolder("   ")
+        assertNull(repository.settings.first().customDownloadFolderUri)
     }
 
     @Test

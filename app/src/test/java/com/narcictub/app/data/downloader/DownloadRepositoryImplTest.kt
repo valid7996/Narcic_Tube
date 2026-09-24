@@ -128,6 +128,7 @@ class DownloadRepositoryImplTest {
         override val settings = MutableStateFlow(AppSettings(concurrentDownloads = concurrent))
         override suspend fun setTheme(mode: ThemeMode) {}
         override suspend fun setDownloadLocation(location: DownloadLocation) {}
+        override suspend fun setCustomDownloadFolder(uri: String?) {}
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setConcurrentDownloads(count: Int) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
