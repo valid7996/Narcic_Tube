@@ -1,15 +1,20 @@
 package com.narcictub.app.ui.downloads
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -21,6 +26,7 @@ import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -30,6 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -41,6 +48,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -286,9 +298,14 @@ private fun ActiveDownloadCard(
     row: UiDownload,
     onCancel: (Long) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -296,13 +313,17 @@ private fun ActiveDownloadCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusIcon(status = row.status)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = row.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = row.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        StatusBadge(status = row.status, modifier = Modifier.padding(start = 8.dp))
+                    }
                     HostLine(host = row.host)
                     StatusLine(
                         status = row.status,
@@ -323,12 +344,20 @@ private fun ActiveDownloadCard(
                     // Known Content-Length: real determinate progress.
                     LinearProgressIndicator(
                         progress = { fraction },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp),
+                        strokeCap = StrokeCap.Round,
                     )
                 } else {
                     // Unknown Content-Length: honest indeterminate bar —
                     // never an invented percentage.
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    LinearProgressIndicator(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp),
+                        strokeCap = StrokeCap.Round,
+                    )
                 }
             }
         }
@@ -342,19 +371,28 @@ private fun FinishedDownloadCard(
     onRetry: (Long) -> Unit,
     onRemoveRequest: (UiDownload) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StatusIcon(status = row.status)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = row.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = row.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    StatusBadge(status = row.status, modifier = Modifier.padding(start = 8.dp))
+                }
                 HostLine(host = row.host)
                 StatusLine(
                     status = row.status,
@@ -391,38 +429,90 @@ private fun FinishedDownloadCard(
     }
 }
 
+/** Tinted circular icon well — the quiet visual anchor of every row. */
 @Composable
 private fun StatusIcon(status: DownloadStatus) {
-    when (status) {
-        DownloadStatus.QUEUED -> Icon(
-            Icons.Filled.HourglassTop,
-            contentDescription = "Queued",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    val (vector, tint) = statusIconFor(status)
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = vector,
+            contentDescription = statusAccessibilityLabel(status),
+            tint = tint,
+            modifier = Modifier.size(22.dp),
         )
-        DownloadStatus.DOWNLOADING -> Icon(
-            Icons.Filled.Downloading,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+    }
+}
+
+@Composable
+private fun statusIconFor(status: DownloadStatus): Pair<ImageVector, Color> = when (status) {
+    DownloadStatus.QUEUED -> Icons.Filled.HourglassTop to MaterialTheme.colorScheme.onSurfaceVariant
+    DownloadStatus.DOWNLOADING -> Icons.Filled.Downloading to MaterialTheme.colorScheme.primary
+    DownloadStatus.PAUSED -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
+    DownloadStatus.COMPLETED -> Icons.Filled.DownloadDone to MaterialTheme.colorScheme.primary
+    DownloadStatus.FAILED -> Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
+    DownloadStatus.CANCELLED -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun statusAccessibilityLabel(status: DownloadStatus): String = when (status) {
+    DownloadStatus.QUEUED -> "Queued"
+    DownloadStatus.DOWNLOADING -> "Downloading"
+    DownloadStatus.PAUSED -> "Paused"
+    DownloadStatus.COMPLETED -> "Completed"
+    DownloadStatus.FAILED -> "Failed"
+    DownloadStatus.CANCELLED -> "Cancelled"
+}
+
+/** Small colored status pill next to the row title. */
+@Composable
+private fun StatusBadge(status: DownloadStatus, modifier: Modifier = Modifier) {
+    val (label, container, content) = when (status) {
+        DownloadStatus.QUEUED -> Triple(
+            "Queued",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
         )
-        DownloadStatus.PAUSED -> Icon(
-            Icons.Filled.Close,
-            contentDescription = "Paused",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        DownloadStatus.DOWNLOADING -> Triple(
+            "Downloading",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer,
         )
-        DownloadStatus.COMPLETED -> Icon(
-            Icons.Filled.DownloadDone,
-            contentDescription = "Completed",
-            tint = MaterialTheme.colorScheme.primary,
+        DownloadStatus.PAUSED -> Triple(
+            "Paused",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
         )
-        DownloadStatus.FAILED -> Icon(
-            Icons.Filled.ErrorOutline,
-            contentDescription = "Failed",
-            tint = MaterialTheme.colorScheme.error,
+        DownloadStatus.COMPLETED -> Triple(
+            "Done",
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer,
         )
-        DownloadStatus.CANCELLED -> Icon(
-            Icons.Filled.Close,
-            contentDescription = "Cancelled",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        DownloadStatus.FAILED -> Triple(
+            "Failed",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer,
+        )
+        DownloadStatus.CANCELLED -> Triple(
+            "Cancelled",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = container,
+        modifier = modifier,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }
@@ -475,15 +565,31 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Downloading,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp),
+            )
+        }
         Text(
             text = "No downloads yet",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 20.dp),
         )
         Text(
-            text = "Queue a link from the Home tab",
+            text = "Share a link into NarcicTub or paste one on the Home tab.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp, start = 32.dp, end = 32.dp),
         )
     }
 }

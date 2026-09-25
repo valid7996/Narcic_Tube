@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -39,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -392,24 +395,56 @@ private fun ResolvedMediaCard(
                     }
                     displayVariants.forEach { variant ->
                         val selected = variant.downloadUrl == selectedVariantUrl
-                        Row(
+                        // Selectable format card — the primary flow control of
+                        // the screen: tinted + outlined when selected, quiet
+                        // surface otherwise.
+                        Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(vertical = 3.dp)
                                 .selectable(
                                     selected = selected,
                                     role = Role.RadioButton,
                                     onClick = { onSelectVariant(variant.downloadUrl) },
-                                )
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                                ),
+                            shape = MaterialTheme.shapes.small,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                            border = BorderStroke(
+                                width = 1.dp,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
                         ) {
-                            RadioButton(selected = selected, onClick = null)
-                            Text(
-                                text = variantLabel(variant),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 8.dp),
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = if (variant.mimeType?.startsWith("audio/") == true) {
+                                        Icons.Outlined.MusicNote
+                                    } else {
+                                        Icons.Filled.PlayCircle
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = variantLabel(variant),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (selected) FontWeight.SemiBold else null,
+                                    modifier = Modifier
+                                        .padding(start = 12.dp)
+                                        .weight(1f),
+                                )
+                                RadioButton(selected = selected, onClick = null)
+                            }
                         }
                     }
                 }

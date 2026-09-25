@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -103,27 +104,39 @@ fun SettingsScreen(
             }
 
             SectionHeader("Appearance")
-            ThemeSection(
-                selected = state.themeMode,
-                onSelect = viewModel::onThemeModeSelected,
-            )
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    ThemeSection(
+                        selected = state.themeMode,
+                        onSelect = viewModel::onThemeModeSelected,
+                    )
+                }
+            }
 
             SectionHeader("Downloads")
-            DownloadLocationSection(
-                selected = state.downloadLocation,
-                onSelect = viewModel::onDownloadLocationSelected,
-            )
-            CustomFolderSection(
-                customFolderUri = state.customFolderUri,
-                onFolderPicked = viewModel::onCustomFolderSelected,
-            )
-            ConcurrentDownloadsSection(
-                value = state.concurrentDownloads,
-                onSelect = viewModel::onConcurrentDownloadsSelected,
-            )
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    DownloadLocationSection(
+                        selected = state.downloadLocation,
+                        onSelect = viewModel::onDownloadLocationSelected,
+                    )
+                    CustomFolderSection(
+                        customFolderUri = state.customFolderUri,
+                        onFolderPicked = viewModel::onCustomFolderSelected,
+                    )
+                    ConcurrentDownloadsSection(
+                        value = state.concurrentDownloads,
+                        onSelect = viewModel::onConcurrentDownloadsSelected,
+                    )
+                }
+            }
 
             SectionHeader("YouTube & Instagram login (optional)")
-            LoginCookiesSection()
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp)) {
+                    LoginCookiesSection()
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }
