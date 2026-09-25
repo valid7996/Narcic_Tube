@@ -35,7 +35,7 @@ private val DarkColors = darkColorScheme(
     onSurfaceVariant = BrandOnSurfaceVariant,
     outline = BrandOutline,
     outlineVariant = BrandOutlineVariant,
-    surfaceContainerLowest = BrandSurface,
+    surfaceContainerLowest = BrandBackground,
     surfaceContainerLow = BrandSurfaceContainerLow,
     surfaceContainer = BrandSurfaceContainer,
     surfaceContainerHigh = BrandSurfaceContainerHigh,
@@ -43,22 +43,22 @@ private val DarkColors = darkColorScheme(
 )
 
 private val LightColors = lightColorScheme(
-    primary = BrandPrimary,
-    onPrimary = BrandOnPrimary,
+    primary = BrandPrimaryLight,
+    onPrimary = BrandOnPrimaryLight,
     primaryContainer = BrandPrimaryContainerLight,
     onPrimaryContainer = BrandOnPrimaryContainerLight,
-    secondary = BrandSecondary,
-    onSecondary = BrandOnSecondary,
-    secondaryContainer = BrandSecondaryContainer,
-    onSecondaryContainer = BrandOnSecondaryContainer,
-    tertiary = BrandTertiary,
-    onTertiary = BrandOnTertiary,
-    tertiaryContainer = BrandTertiaryContainer,
-    onTertiaryContainer = BrandOnTertiaryContainer,
-    error = BrandError,
-    onError = BrandOnError,
-    errorContainer = BrandErrorContainer,
-    onErrorContainer = BrandOnErrorContainer,
+    secondary = BrandSecondaryLight,
+    onSecondary = BrandOnSecondaryLight,
+    secondaryContainer = BrandSecondaryContainerLight,
+    onSecondaryContainer = BrandOnSecondaryContainerLight,
+    tertiary = BrandTertiaryLight,
+    onTertiary = BrandOnTertiaryLight,
+    tertiaryContainer = BrandTertiaryContainerLight,
+    onTertiaryContainer = BrandOnTertiaryContainerLight,
+    error = BrandErrorLight,
+    onError = BrandOnErrorLight,
+    errorContainer = BrandErrorContainerLight,
+    onErrorContainer = BrandOnErrorContainerLight,
     background = BrandBackgroundLight,
     onBackground = BrandOnBackgroundLight,
     surface = BrandSurfaceLight,
@@ -75,9 +75,9 @@ private val LightColors = lightColorScheme(
 )
 
 /**
- * Rounded design language: softly curved cards, pill-shaped buttons and
- * generously rounded sheets. Applied at theme level so every Material
- * component (cards, text fields, buttons, bottom bar) inherits it.
+ * Rounded honey design language: softly curved cards, pill buttons and
+ * generously rounded sheets — applied at theme level so every Material
+ * component inherits it.
  */
 private val NarcicTubShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -88,8 +88,8 @@ private val NarcicTubShapes = Shapes(
 )
 
 /**
- * Root theme of the app. Dark-first design: dark scheme is the primary
- * palette, light is derived for users who prefer it.
+ * Root theme of the app. Dark-first honey design: the warm-charcoal scheme
+ * is the primary palette, cream is derived for users who prefer light.
  */
 @Composable
 fun NarcicTubTheme(

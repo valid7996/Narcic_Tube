@@ -1,6 +1,12 @@
 package com.narcictub.app.ui.downloads
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +15,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -56,13 +64,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.DownloadProgress
 import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.domain.model.DownloadsOverview
 import com.narcictub.app.domain.model.HistoryItem
+import com.narcictub.app.ui.theme.BeeIcon
+import com.narcictub.app.ui.theme.HexGauge
+import com.narcictub.app.ui.theme.HexPointyShape
+import com.narcictub.app.ui.theme.Hexagon
+import com.narcictub.app.ui.theme.HiveTabShape
+import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.InkOnHoney
 import com.narcictub.app.ui.theme.NarcicTubTheme
+import com.narcictub.app.ui.theme.StripedHoneyBar
+import com.narcictub.app.ui.theme.honeycomb
 import java.time.Instant
 
 /**
@@ -157,16 +175,15 @@ fun DownloadsScreenContent(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (state.active.isNotEmpty()) {
-                    sectionHeader("Active")
-                    items(state.active, key = { "active-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel)
-                    }
+                if (state.active.isNotEmpty() || state.queue.isNotEmpty() || state.finished.isNotEmpty()) {
+                    item(key = "hive-stats") { HiveStatsRow(state) }
                 }
-                if (state.queue.isNotEmpty()) {
-                    sectionHeader("Queued")
-                    items(state.queue, key = { "queue-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel)
+                if (state.active.isNotEmpty() || state.queue.isNotEmpty()) {
+                    item(key = "hive-folder") {
+                        HiveFolder(
+                            rows = state.active + state.queue,
+                            onCancel = onCancel,
+                        )
                     }
                 }
                 if (state.finished.isNotEmpty()) {
@@ -332,33 +349,137 @@ private fun ActiveDownloadCard(
                         bytes = row.completedBytes,
                     )
                 }
+                HexGauge(
+                    progress = row.progress?.fraction,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
                 if (offersCancelAction(row.status)) {
                     IconButton(onClick = { onCancel(row.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = "Cancel download")
                     }
                 }
             }
-            if (row.status == DownloadStatus.DOWNLOADING) {
-                val fraction = row.progress?.fraction
-                if (fraction != null) {
-                    // Known Content-Length: real determinate progress.
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
-                        strokeCap = StrokeCap.Round,
-                    )
-                } else {
-                    // Unknown Content-Length: honest indeterminate bar —
-                    // never an invented percentage.
-                    LinearProgressIndicator(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
-                        strokeCap = StrokeCap.Round,
-                    )
-                }
+            if (row.status == DownloadStatus.DOWNLOADING || row.status == DownloadStatus.PAUSED) {
+                // Real byte fraction when Content-Length is known; an honest
+                // indeterminate stripe when it isn't — never an invented %.
+                StripedHoneyBar(
+                    fraction = row.progress?.fraction,
+                    running = row.status == DownloadStatus.DOWNLOADING,
+                    paused = row.status == DownloadStatus.PAUSED,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * HIVE stats — three interlocked hexagons (the middle one honey-filled and
+ * layered above): in hive (active + queued) · running (transferring) ·
+ * saved (completed records). All live, all real counts.
+ */
+@Composable
+private fun HiveStatsRow(state: DownloadsUiState) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        StatHex(
+            value = (state.active.size + state.queue.size).toString(),
+            label = "in hive",
+            filled = false,
+        )
+        StatHex(
+            value = state.active.size.toString(),
+            label = "running",
+            filled = true,
+            modifier = Modifier
+                .offset(x = (-18).dp)
+                .zIndex(1f),
+        )
+        StatHex(
+            value = state.finished.count { it.status == DownloadStatus.COMPLETED }.toString(),
+            label = "saved",
+            filled = false,
+            modifier = Modifier.offset(x = (-36).dp),
+        )
+    }
+}
+
+@Composable
+private fun StatHex(value: String, label: String, filled: Boolean, modifier: Modifier = Modifier) {
+    Hexagon(
+        size = 88.dp,
+        fill = if (filled) HoneyGradient else null,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.then(
+            if (filled) Modifier else Modifier.border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, HexPointyShape),
+        ),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (filled) InkOnHoney else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (filled) InkOnHoney.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The HIVE folder: a bordered card with the honeycomb texture inside and an
+ * overhanging honey tab (bee + "In progress" + count pill) holding every
+ * active and queued download.
+ */
+@Composable
+private fun HiveFolder(rows: List<UiDownload>, onCancel: (Long) -> Unit) {
+    Box(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 14.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .honeycomb(MaterialTheme.colorScheme.primary, alpha = 0.08f, tile = 56.dp)
+                .padding(top = 26.dp, start = 10.dp, end = 10.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            rows.forEach { row -> ActiveDownloadCard(row = row, onCancel = onCancel) }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(y = (-14).dp)
+                .clip(HiveTabShape)
+                .background(HoneyGradient)
+                .padding(start = 12.dp, end = 24.dp, top = 7.dp, bottom = 7.dp),
+        ) {
+            val flap by rememberInfiniteTransition(label = "hiveBee").animateFloat(
+                -18f, 18f, infiniteRepeatable(tween(120), RepeatMode.Reverse), label = "flap",
+            )
+            BeeIcon(modifier = Modifier.size(26.dp), flapAngle = flap)
+            Text(
+                text = " In progress",
+                style = MaterialTheme.typography.labelMedium,
+                color = InkOnHoney,
+            )
+            Box(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .clip(CircleShape)
+                    .background(InkOnHoney.copy(alpha = 0.20f))
+                    .padding(horizontal = 7.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    text = rows.size.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = InkOnHoney,
+                )
             }
         }
     }

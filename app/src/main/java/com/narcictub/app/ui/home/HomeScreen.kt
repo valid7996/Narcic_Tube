@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardActions
@@ -72,6 +73,9 @@ import com.narcictub.app.domain.model.MediaVariant
 import com.narcictub.app.ui.theme.BrandOnPrimary
 import com.narcictub.app.ui.theme.BrandPrimary
 import com.narcictub.app.ui.theme.BrandPrimaryDim
+import com.narcictub.app.ui.theme.Hexagon
+import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.InkOnHoney
 import com.narcictub.app.ui.theme.NarcicTubTheme
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
@@ -148,9 +152,8 @@ private fun HomeContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Hero banner: the brand moment of the screen — gradient surface,
-        // app name and a one-line guide into the flow.
-        Box(
+        // Hero banner: hexagon honey logo + brand + flow guide.
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(MaterialTheme.shapes.extraLarge)
@@ -160,19 +163,28 @@ private fun HomeContent(
                     ),
                 )
                 .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
+            Hexagon(size = 56.dp, fill = HoneyGradient) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.Download,
+                        contentDescription = null,
+                        tint = InkOnHoney,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+            Column(Modifier.padding(start = 14.dp)) {
                 Text(
                     text = "NarcicTub",
                     style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
                     color = BrandOnPrimary,
                 )
                 Text(
                     text = "Paste a link — pick a format — download.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = BrandOnPrimary.copy(alpha = 0.85f),
-                    modifier = Modifier.padding(top = 2.dp),
                 )
             }
         }
