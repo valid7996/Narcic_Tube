@@ -195,7 +195,7 @@ private fun HomeContent(
                 }
             }
             Text(
-                text = "NarcicTub",
+                text = "Narcic Tube",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(top = 14.dp),

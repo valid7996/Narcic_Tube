@@ -39,7 +39,7 @@ object DownloadNotifications {
     /** Stable channel for ALL download notifications — created idempotently. */
     const val CHANNEL_ID = "downloads"
 
-    private const val APP_NAME = "NarcicTub"
+    private const val APP_NAME = "Narcic Tube"
 
     /**
      * Builds the snapshot for one history row. Returns null when the row

@@ -20,6 +20,7 @@ import javax.inject.Singleton
 @Singleton
 class YtDlpExtractor @Inject constructor(
     private val engine: YtDlpEngine,
+    private val instagramPhotoResolver: com.narcictub.app.data.resolver.InstagramPhotoResolver,
 ) : MediaExtractor {
 
     override val priority: Int = 100
@@ -39,6 +40,15 @@ class YtDlpExtractor @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: MediaResolveException) {
+            // Instagram PHOTO posts: yt-dlp finds no video stream in them
+            // (NO_MEDIA) — the og:image fallback resolves the real photo.
+            val noMediaPhotoCandidate = e is MediaResolveException.ExtractionFailed &&
+                e.provider == MediaProvider.INSTAGRAM &&
+                e.reason == MediaResolveException.ExtractionFailed.Reason.NO_MEDIA
+            if (noMediaPhotoCandidate) {
+                val photo = instagramPhotoResolver.resolvePhotoPost(pageUrl)
+                if (photo != null) return Result.success(photo)
+            }
             Result.failure(e)
         } catch (e: Exception) {
             Result.failure(MediaResolveException.ExtractionFailed(provider, YtDlpErrors.reasonOf(e)))

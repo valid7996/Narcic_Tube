@@ -57,3 +57,43 @@ class MediaProviderDetectorTest {
         assertEquals(MediaProvider.YOUTUBE, MediaProviderDetector.detect("HTTPS://WWW.YOUTUBE.COM/watch?v=1"))
     }
 }
+
+/*
+ * HONEY — expanded platform recognition: every new provider is detected by
+ * its real hosts (incl. shorteners/subdomains) while lookalike hosts stay
+ * UNKNOWN.
+ */
+class MediaProviderExpansionTest {
+
+    @Test
+    fun `new platforms are detected by their real hosts`() {
+        val cases = mapOf(
+            "https://www.tiktok.com/@user/video/123" to MediaProvider.TIKTOK,
+            "https://vm.tiktok.com/abcd/" to MediaProvider.TIKTOK,
+            "https://x.com/user/status/123" to MediaProvider.TWITTER,
+            "https://mobile.twitter.com/user/status/1" to MediaProvider.TWITTER,
+            "https://www.facebook.com/watch/?v=1" to MediaProvider.FACEBOOK,
+            "https://fb.watch/abcd/" to MediaProvider.FACEBOOK,
+            "https://www.pinterest.com/pin/123/" to MediaProvider.PINTEREST,
+            "https://pin.it/abcd" to MediaProvider.PINTEREST,
+            "https://www.snapchat.com/spotlight/xyz" to MediaProvider.SNAPCHAT,
+            "https://soundcloud.com/artist/track" to MediaProvider.SOUNDCLOUD,
+            "https://on.soundcloud.com/abcd" to MediaProvider.SOUNDCLOUD,
+            "https://open.spotify.com/track/abc" to MediaProvider.SPOTIFY,
+        )
+        cases.forEach { (url, expected) ->
+            assertEquals(url, expected, MediaProviderDetector.detect(url))
+        }
+    }
+
+    @Test
+    fun `lookalike new providers are not recognized`() {
+        listOf(
+            "https://tiktok.com.evil.com/video/1",
+            "https://x.com.evil.example.com/status/1",
+            "https://notfacebook.com/watch",
+        ).forEach { url ->
+            assertEquals(url, MediaProvider.UNKNOWN, MediaProviderDetector.detect(url))
+        }
+    }
+}

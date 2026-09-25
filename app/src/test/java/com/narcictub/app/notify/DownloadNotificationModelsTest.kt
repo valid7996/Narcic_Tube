@@ -150,7 +150,7 @@ class DownloadNotificationModelsTest {
     @Test
     fun `snapshot title is the fixed app name`() {
         val snapshot = DownloadNotifications.build(7, item(DownloadStatus.DOWNLOADING), null)!!
-        assertEquals("NarcicTub", snapshot.title)
+        assertEquals("Narcic Tube", snapshot.title)
     }
 
     // ===== throttling =====

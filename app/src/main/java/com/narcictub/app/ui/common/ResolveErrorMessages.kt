@@ -14,9 +14,13 @@ internal object ResolveErrorMessages {
         is MediaResolveException.UnsupportedSource ->
             "This isn't a direct media file link — dedicated platforms aren't supported yet."
         is MediaResolveException.UnsupportedProvider ->
-            // PHASE 17: recognized provider, honest "not implemented yet".
-            "${error.provider.displayName} links aren't supported yet — " +
-                "extraction for this provider hasn't been implemented."
+            when (error.provider) {
+                com.narcictub.app.domain.model.MediaProvider.SPOTIFY ->
+                    "Spotify streams are DRM-protected — downloading them isn't possible."
+                else ->
+                    "${error.provider.displayName} links aren't supported yet — " +
+                        "extraction for this provider hasn't been implemented."
+            }
         is MediaResolveException.ExtractionUnavailable ->
             // PHASE 19: provider is recognized but no legitimate, authorized
             // retrieval path exists — the honest message, no "Download failed".
