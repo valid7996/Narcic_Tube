@@ -56,14 +56,4 @@ class NavigationRouteTest {
         val decoded = json.decodeFromString<Destination.Downloads>(json.encodeToString(Destination.Downloads))
         assertEquals(Destination.Downloads, decoded)
     }
-
-    @Test
-    fun `share download route carries the url through serialization`() {
-        val url = "https://www.youtube.com/watch?v=abc&feature=share"
-        val route = Destination.ShareDownload(url = url)
-        val encoded = json.encodeToString(route)
-        assertTrue(encoded.contains("youtube.com"))
-        val decoded: Destination.ShareDownload = json.decodeFromString(encoded)
-        assertEquals(url, decoded.url)
-    }
 }

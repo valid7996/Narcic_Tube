@@ -5,4 +5,17 @@
     <style name="Theme.NarcicTub" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@null</item>
     </style>
+
+    <!-- Share-target dialog: a small floating window OVER the sharing app.
+         Translucent + dimmed backdrop; sized to its (compact) content.
+         Dot notation makes it inherit Theme.NarcicTub. -->
+    <style name="Theme.NarcicTub.ShareDialog">
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
 </resources>

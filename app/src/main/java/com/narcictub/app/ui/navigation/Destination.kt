@@ -26,16 +26,6 @@ sealed interface Destination {
     @Serializable
     data class Playback(val itemId: Long) : Destination
 
-    /**
-     * Share-target download screen ("Download as") — opened when a link is
-     * shared into NarcicTub (e.g. YouTube → Share → NarcicTub). Not a
-     * top-level tab — the bottom bar hides on this route. The argument is
-     * the validated shared URL; the screen's ViewModel re-validates and
-     * resolves it itself, never trusting navigation input beyond that.
-     */
-    @Serializable
-    data class ShareDownload(val url: String) : Destination
-
     @Serializable
     data object Settings : Destination
 }

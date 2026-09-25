@@ -29,10 +29,20 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- PHASE 17: receive shared TEXT links only. No wildcard MIME,
-                 no file intake, no broad capture — the activity is already
-                 exported as the launcher; this filter adds text/plain SEND
-                 handling and nothing else. -->
+        </activity>
+
+        <!-- Share target: a small floating dialog over the sharing app
+             (YouTube/Instagram → Share → NarcicTub). Receives shared TEXT
+             links only — no wildcard MIME, no file intake, no broad capture.
+             excludeFromRecents + noHistory keep the sharing app's task
+             untouched once the dialog is dismissed. -->
+        <activity
+            android:name=".ui.share.ShareDownloadActivity"
+            android:exported="true"
+            android:theme="@style/Theme.NarcicTub.ShareDialog"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

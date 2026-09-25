@@ -10,9 +10,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.narcictub.app.ui.home.ShareIntakeViewModel
 import com.narcictub.app.ui.navigation.NarcicTubApp
 import com.narcictub.app.ui.settings.SettingsViewModel
 import com.narcictub.app.ui.theme.NarcicTubTheme
@@ -29,26 +30,24 @@ class MainActivity : ComponentActivity() {
     private val settingsViewModel: SettingsViewModel by viewModels()
 
     /**
-     * PHASE 17: activity-scoped intake for URLs shared into NarcicTub. It
-     * survives configuration changes, so a consumed share event is never
-     * re-processed after a rotation; no static/global state is involved.
+     * One-shot request to land on the Downloads tab — set when launched (or
+     * re-launched) by the share dialog's "Go to downloads" button. Consumed
+     * by NarcicTubApp after navigating; stays false for normal launches.
      */
-    private val shareIntakeViewModel: ShareIntakeViewModel by viewModels()
+    private var openDownloads by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // Fresh creation only — on recreation the original intent was
-        // already consumed (the intake ViewModel survived), so processing
-        // again would duplicate the resolve.
-        if (savedInstanceState == null) {
-            handleShareIntent(intent)
-        }
+        openDownloads = intent?.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false) == true
         setContent {
             val themeMode by settingsViewModel.themeMode.collectAsStateWithLifecycle()
             NarcicTubTheme(darkTheme = themeMode.resolveDarkTheme(isSystemInDarkTheme())) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    NarcicTubApp()
+                    NarcicTubApp(
+                        openDownloadsFirst = openDownloads,
+                        onDownloadsOpened = { openDownloads = false },
+                    )
                 }
             }
         }
@@ -56,15 +55,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // App already running (foreground or background): each new share
-        // intent is a deliberate user action and is processed once.
-        handleShareIntent(intent)
+        // Already running: "Go to downloads" from the share dialog must
+        // switch the live instance to the Downloads tab.
+        if (intent.getBooleanExtra(EXTRA_OPEN_DOWNLOADS, false)) {
+            openDownloads = true
+        }
     }
 
-    private fun handleShareIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
-            // No binary intake, no wildcard MIME: text/plain shares only.
-            shareIntakeViewModel.onNewSharedText(intent.getStringExtra(Intent.EXTRA_TEXT))
-        }
+    companion object {
+        const val EXTRA_OPEN_DOWNLOADS = "open_downloads"
     }
 }

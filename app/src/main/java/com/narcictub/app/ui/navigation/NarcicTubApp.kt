@@ -21,11 +21,8 @@ import androidx.navigation.compose.rememberNavController
 import com.narcictub.app.ui.downloads.DownloadsScreen
 import com.narcictub.app.ui.history.HistoryScreen
 import com.narcictub.app.ui.home.HomeScreen
-import com.narcictub.app.ui.home.PendingShare
-import com.narcictub.app.ui.home.ShareIntakeViewModel
 import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
-import com.narcictub.app.ui.share.ShareDownloadScreen
 
 /**
  * Root app scaffold: bottom bar + NavHost with type-safe routes.
@@ -34,6 +31,8 @@ import com.narcictub.app.ui.share.ShareDownloadScreen
 fun NarcicTubApp(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    openDownloadsFirst: Boolean = false,
+    onDownloadsOpened: () -> Unit = {},
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -41,25 +40,12 @@ fun NarcicTubApp(
         currentDestination?.hasRoute(dest::class) == true
     }
 
-    // PHASE 17: an Android-Share intake is processed once, at the nav root.
-    // A validated URL opens the dedicated Share download screen ("Download
-    // as") where the user picks a format and queues the download; a share
-    // with no usable link routes to Home with its safe message. The intake
-    // ViewModel here is the same activity-scoped instance the activity and
-    // the screens see — single source of truth.
-    val shareViewModel: ShareIntakeViewModel = hiltViewModel()
-    val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingShare) {
-        when (val share = pendingShare) {
-            is PendingShare.Url -> {
-                shareViewModel.onConsumed()
-                navController.navigate(Destination.ShareDownload(share.url))
-            }
-            is PendingShare.Invalid -> {
-                shareViewModel.onConsumed()
-                navController.navigateToTopLevel(Destination.Home)
-            }
-            null -> Unit
+    // One-shot deep link from the share dialog's "Go to downloads" button:
+    // land directly on the Downloads tab where live progress is visible.
+    LaunchedEffect(openDownloadsFirst) {
+        if (openDownloadsFirst) {
+            navController.navigateToTopLevel(Destination.Downloads)
+            onDownloadsOpened()
         }
     }
 
@@ -99,11 +85,6 @@ fun NarcicTubApp(
             }
             composable<Destination.Playback> {
                 PlaybackScreen(onBack = { navController.popBackStack() })
-            }
-            composable<Destination.ShareDownload> {
-                ShareDownloadScreen(
-                    onQueued = { navController.navigateToTopLevel(Destination.Downloads) },
-                )
             }
             composable<Destination.Settings> { SettingsScreen() }
         }

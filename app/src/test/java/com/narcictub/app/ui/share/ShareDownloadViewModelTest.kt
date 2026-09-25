@@ -1,6 +1,5 @@
 package com.narcictub.app.ui.share
 
-import androidx.lifecycle.SavedStateHandle
 import com.narcictub.app.domain.model.DownloadProgress
 import com.narcictub.app.domain.model.HistoryItem
 import com.narcictub.app.domain.model.MediaFileAvailability
@@ -85,14 +84,12 @@ class ShareDownloadViewModelTest {
     private lateinit var resolver: RecordingResolver
     private lateinit var repo: RecordingDownloadRepo
 
-    private fun viewModel(url: String? = SHARED_URL): ShareDownloadViewModel {
-        val handle = if (url == null) SavedStateHandle() else SavedStateHandle(mapOf("url" to url))
-        return ShareDownloadViewModel(
-            savedStateHandle = handle,
+    /** Fresh VM fed with shared text, exactly like the share activity does. */
+    private fun viewModel(sharedText: String? = SHARED_TEXT) =
+        ShareDownloadViewModel(
             resolveUrl = ResolveUrlUseCase(resolver),
             enqueueDownload = EnqueueDownloadUseCase(repo),
-        )
-    }
+        ).also { it.onSharedText(sharedText) }
 
     @Before
     fun setUp() {
@@ -157,8 +154,8 @@ class ShareDownloadViewModelTest {
     }
 
     @Test
-    fun `missing url argument shows the safe intake error without resolving`() = runTest {
-        val vm = viewModel(url = null)
+    fun `shared text without a link shows the safe intake error without resolving`() = runTest {
+        val vm = viewModel(sharedText = "no link here at all")
         advanceUntilIdle()
 
         assertEquals(0, resolver.callCount)
@@ -167,8 +164,8 @@ class ShareDownloadViewModelTest {
     }
 
     @Test
-    fun `non-http url argument is treated as a missing link`() = runTest {
-        val vm = viewModel(url = "javascript:alert(1)")
+    fun `shared text with a non-http token is treated as no link`() = runTest {
+        val vm = viewModel(sharedText = "javascript:alert(1)")
         advanceUntilIdle()
 
         assertEquals(0, resolver.callCount)
@@ -295,6 +292,7 @@ class ShareDownloadViewModelTest {
     }
 
     private companion object {
+        const val SHARED_TEXT = "check this out https://www.youtube.com/watch?v=dQw4w9WgXcQ"
         const val SHARED_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     }
 }

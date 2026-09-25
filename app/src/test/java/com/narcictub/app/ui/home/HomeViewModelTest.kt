@@ -51,30 +51,6 @@ class HomeViewModelTest {
         override suspend fun resolve(url: String): Result<MediaInfo> = gate.await()
     }
 
-    /** PHASE 17: per-call gated resolver to pin share-intake cancellation. */
-    private class QueueResolver : MediaResolver {
-        private val gates = ArrayDeque<CompletableDeferred<Result<MediaInfo>>>()
-        val urls = mutableListOf<String>()
-
-        fun enqueueGate(): CompletableDeferred<Result<MediaInfo>> =
-            CompletableDeferred<Result<MediaInfo>>().also { gates.addLast(it) }
-
-        override suspend fun resolve(url: String): Result<MediaInfo> {
-            urls.add(url)
-            val gate = gates.removeFirstOrNull() ?: CompletableDeferred(
-                Result.success(
-                    MediaInfo(
-                        sourceUrl = url,
-                        title = url.substringAfterLast('/'),
-                        host = "example.com",
-                        isDirectFile = true,
-                    ),
-                ),
-            )
-            return gate.await()
-        }
-    }
-
     private class RecordingDownloadRepo : com.narcictub.app.domain.repository.DownloadRepository {
         val enqueued = mutableListOf<String>()
         var fail = false
@@ -553,46 +529,6 @@ class HomeViewModelTest {
         assertTrue("direct links keep the plain enqueue path", downloadRepo.titles.isEmpty())
     }
 
-    @Test
-    fun `shared url cancels an in-flight resolve and resolves the new url`() = runTest {
-        val gated = QueueResolver()
-        val gate1 = gated.enqueueGate()
-        val vm = HomeViewModel(
-            resolveUrl = ResolveUrlUseCase(gated),
-            enqueueDownload = EnqueueDownloadUseCase(downloadRepo),
-        )
-        vm.onUrlChange("https://example.com/first.mp4")
-        vm.onResolve()
-        testScheduler.runCurrent() // first resolve is now in flight
-        assertEquals(listOf("https://example.com/first.mp4"), gated.urls)
-
-        // The share arrives while the first resolve is still running.
-        vm.onSharedUrlReceived("https://example.com/second.mp4")
-        advanceUntilIdle()
-
-        // First resolve was cancelled before completing; the shared URL
-        // resolved exactly once and its real metadata landed.
-        assertEquals(
-            listOf("https://example.com/first.mp4", "https://example.com/second.mp4"),
-            gated.urls,
-        )
-        assertFalse(vm.uiState.value.isResolving)
-        assertNull(vm.uiState.value.errorMessage)
-        assertEquals("second.mp4", vm.uiState.value.resolvedMedia?.title)
-        assertEquals("https://example.com/second.mp4", vm.uiState.value.url)
-        assertTrue(gate1.isActive || gate1.isCompleted) // no crash either way
-    }
-
-    @Test
-    fun `share rejection surfaces a safe message without touching the form`() = runTest {
-        val vm = viewModel()
-        vm.onUrlChange("https://example.com/keep.mp4")
-        vm.onShareRejected("The shared text doesn't contain a supported link.")
-
-        assertEquals("The shared text doesn't contain a supported link.", vm.uiState.value.errorMessage)
-        assertEquals("https://example.com/keep.mp4", vm.uiState.value.url)
-    }
-
     // ===== Phase 20: variant selection + download integration =====
 
     private fun variant(
@@ -752,7 +688,8 @@ class HomeViewModelTest {
         assertEquals("https://example.com/a-1080.mp4", vm.uiState.value.selectedVariantUrl)
 
         resolver.result = Result.success(mediaB)
-        vm.onSharedUrlReceived("https://example.com/b-source")
+        vm.onUrlChange("https://example.com/b-source")
+        vm.onResolve()
         advanceUntilIdle()
 
         assertEquals("selection now belongs to B", "https://example.com/b-source", vm.uiState.value.selectedVariantUrl)

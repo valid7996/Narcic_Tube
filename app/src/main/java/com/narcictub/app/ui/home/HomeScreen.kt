@@ -35,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
@@ -43,7 +42,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaVariant
@@ -64,25 +62,6 @@ fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-
-    // PHASE 17 / share-screen split: the nav ROOT owns PendingShare.Url —
-    // it opens the dedicated Share download screen. Home only consumes the
-    // Invalid case, so its safe message is visible where the user can paste
-    // a link manually. Each event kind is consumed by exactly one owner.
-    val shareViewModel: ShareIntakeViewModel = hiltViewModel(
-        viewModelStoreOwner = LocalContext.current as ViewModelStoreOwner,
-    )
-    val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingShare) {
-        when (val share = pendingShare) {
-            is PendingShare.Invalid -> {
-                viewModel.onShareRejected(share.message)
-                shareViewModel.onConsumed()
-            }
-            is PendingShare.Url -> Unit
-            null -> Unit
-        }
-    }
 
     HomeContent(
         state = state,

@@ -212,24 +212,6 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** Shows a safe rejection message for a share with no usable link. */
-    fun onShareRejected(message: String) {
-        _uiState.update { it.copy(errorMessage = message) }
-    }
-
-    /**
-     * PHASE 17: entry point for Android Share intake. Any in-flight resolve
-     * is cancelled deterministically, the shared URL fills the form, and
-     * resolution starts — the user still chooses Download explicitly.
-     */
-    fun onSharedUrlReceived(url: String) {
-        resolveJob?.cancel()
-        resolveJob = null
-        _uiState.update { it.copy(isResolving = false) }
-        onUrlChange(url)
-        onResolve()
-    }
-
     /** Resets the one-shot "queued" toast/scaffold flag after UI consumed it. */
     fun onQueuedMessageShown() {
         _uiState.update { it.copy(queuedSuccessfully = false) }

@@ -1,6 +1,5 @@
 package com.narcictub.app.ui.share
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.narcictub.app.domain.NetworkDestinationPolicy
@@ -8,6 +7,7 @@ import com.narcictub.app.domain.UrlValidator
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaProvider
 import com.narcictub.app.domain.model.MediaVariant
+import com.narcictub.app.domain.share.SharedTextUrl
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
 import com.narcictub.app.domain.usecase.InvalidUrlException
 import com.narcictub.app.domain.usecase.ResolveUrlUseCase
@@ -22,8 +22,9 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * UI state for the Share download screen ("Download as"): the screen a user
- * lands on after sharing a link (e.g. a YouTube video) into NarcicTub.
+ * UI state for the compact Share download sheet ("Download as") — the small
+ * floating dialog that appears OVER the sharing app (YouTube, Instagram, …)
+ * after Share → NarcicTub.
  *
  * The shared URL resolves into real format variants (music / video, with
  * real sizes when known); the user picks one and queues the download —
@@ -31,14 +32,14 @@ import javax.inject.Inject
  * are safe, user-readable messages.
  */
 data class ShareDownloadUiState(
-    /** The validated shared URL this screen was opened with; null = invalid intake. */
+    /** The validated shared URL this sheet was opened with; null = invalid intake. */
     val url: String? = null,
     val isResolving: Boolean = false,
     val resolvedMedia: MediaInfo? = null,
     /** Identity (downloadUrl) of the selected variant; null = nothing selected. */
     val selectedVariantUrl: String? = null,
     val isEnqueueing: Boolean = false,
-    /** One-shot: the selected variant was queued — the UI routes to Downloads. */
+    /** One-shot: the selected variant was queued — show the confirmation row. */
     val queued: Boolean = false,
     val errorMessage: String? = null,
 ) {
@@ -55,31 +56,62 @@ data class ShareDownloadUiState(
  * Share-target download flow, mirroring the Home form's Phase 20 variant
  * rules exactly (same guards, same use cases, same safe error mapping):
  *
- *  - the shared URL resolves ONCE when the screen opens (retryable),
+ *  - the shared TEXT is extracted and validated once, then the URL resolves
+ *    ONCE (retryable),
  *  - selection is by identity and must belong to the CURRENT media,
  *  - a variant that fails the stage-1 destination policy is never
  *    selectable (the full policy re-runs inside the downloader),
  *  - enqueueing goes through EnqueueDownloadUseCase with the variant's
- *    real duration and the provider's real title.
+ *    real duration and the provider's real title; the download then runs
+ *    in the app-scoped worker scope and survives this dialog closing.
  */
 @HiltViewModel
 class ShareDownloadViewModel @Inject constructor(
-    savedStateHandle: SavedStateHandle,
     private val resolveUrl: ResolveUrlUseCase,
     private val enqueueDownload: EnqueueDownloadUseCase,
 ) : ViewModel() {
 
-    /** Navigation argument key — set by Destination.ShareDownload. */
-    private val sharedUrl: String? = savedStateHandle.get<String>(KEY_URL)
-        ?.takeIf { UrlValidator.isValidHttpUrl(it) }
-
-    private val _uiState = MutableStateFlow(ShareDownloadUiState(url = sharedUrl))
+    private val _uiState = MutableStateFlow(ShareDownloadUiState())
     val uiState: StateFlow<ShareDownloadUiState> = _uiState.asStateFlow()
 
     private var resolveJob: Job? = null
 
-    init {
-        if (sharedUrl != null) resolve() else showIntakeError()
+    /**
+     * Entry point for the share-target activity: raw ACTION_SEND text.
+     * Called once per fresh activity creation (recreation keeps the state).
+     */
+    fun onSharedText(rawText: String?) {
+        resolveJob?.cancel()
+        resolveJob = null
+        val reset = {
+            _uiState.update {
+                it.copy(
+                    url = null,
+                    isResolving = false,
+                    resolvedMedia = null,
+                    selectedVariantUrl = null,
+                    queued = false,
+                )
+            }
+        }
+        when (val extraction = SharedTextUrl.extract(rawText)) {
+            is SharedTextUrl.Extraction.Single -> start(extraction.url)
+            is SharedTextUrl.Extraction.Ambiguous -> {
+                reset()
+                _uiState.update {
+                    it.copy(
+                        errorMessage = "The shared text contains ${extraction.candidates} " +
+                            "different links. Copy the one you want and paste it directly.",
+                    )
+                }
+            }
+            SharedTextUrl.Extraction.None -> {
+                reset()
+                _uiState.update {
+                    it.copy(errorMessage = "The shared text doesn't contain a supported link.")
+                }
+            }
+        }
     }
 
     /** Authoritative resolve via ResolveUrlUseCase; retryable with [retry]. */
@@ -88,9 +120,14 @@ class ShareDownloadViewModel @Inject constructor(
         resolve()
     }
 
+    private fun start(url: String) {
+        _uiState.update { it.copy(url = url) }
+        resolve()
+    }
+
     private fun resolve() {
-        val url = sharedUrl
-        if (url == null || _uiState.value.isResolving) return
+        val url = _uiState.value.url ?: return
+        if (_uiState.value.isResolving) return
         _uiState.update {
             it.copy(
                 isResolving = true,
@@ -184,7 +221,9 @@ class ShareDownloadViewModel @Inject constructor(
         _uiState.update { it.copy(isEnqueueing = true, errorMessage = null) }
         viewModelScope.launch {
             // The provider's real title and the variant's real duration
-            // travel with the row (same as the Home form).
+            // travel with the row (same as the Home form). The enqueue lives
+            // in the app-scoped repository/worker scope — closing this dialog
+            // (or the whole task) never cancels the download.
             val providerTitle = state.resolvedMedia
                 ?.takeIf { it.provider != MediaProvider.UNKNOWN }
                 ?.title
@@ -207,15 +246,5 @@ class ShareDownloadViewModel @Inject constructor(
                 )
             }
         }
-    }
-
-    private fun showIntakeError() {
-        _uiState.update {
-            it.copy(errorMessage = "The shared text doesn't contain a supported link.")
-        }
-    }
-
-    private companion object {
-        const val KEY_URL = "url"
     }
 }
