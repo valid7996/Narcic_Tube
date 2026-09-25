@@ -110,6 +110,15 @@ object DownloadNotifications {
         return NotificationAction.POST_OR_UPDATE
     }
 
+    /**
+     * True while a row still needs the process alive (queued for a slot,
+     * transferring, or paused) — the foreground service's stop condition.
+     */
+    fun isInFlight(status: DownloadStatus): Boolean = when (status) {
+        DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED -> true
+        else -> false
+    }
+
     private fun humanBytes(bytes: Long): String = when {
         bytes >= 1L shl 30 -> "%.1f GB".format(bytes / 1e9)
         bytes >= 1L shl 20 -> "%.1f MB".format(bytes / 1e6)

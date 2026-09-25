@@ -5,10 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.narcictub.app.MainActivity
 import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.domain.usecase.ObserveDownloadsUseCase
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -124,14 +122,7 @@ class DownloadNotificationController @Inject constructor(
     }
 
     /** Explicit launcher intent — no implicit intents, immutable flags. */
-    private fun contentIntent(): PendingIntent = PendingIntent.getActivity(
-        context,
-        0,
-        Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        },
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private fun contentIntent(): PendingIntent = DownloadNotificationOpen.pendingIntent(context)
 
     private fun isNotificationEnabled(): Boolean =
         NotificationManagerCompat.from(context).areNotificationsEnabled()

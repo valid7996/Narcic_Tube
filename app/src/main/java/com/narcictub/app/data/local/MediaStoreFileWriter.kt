@@ -81,7 +81,17 @@ open class MediaStoreFileWriter @Inject constructor(
             }
         }
         if (deviceSdkInt() >= Build.VERSION_CODES.Q) {
-            publishViaQPlus(settings.downloadLocation, stagingFile, safeName, mimeType, subDirectory)
+            publishViaQPlus(
+                settings.downloadLocation,
+                stagingFile,
+                safeName,
+                mimeType,
+                // Default: an app-named subfolder of the chosen collection
+                // (Downloads/NarcicTub, Music/NarcicTub, …) instead of the
+                // collection root — callers that pass an explicit relative
+                // path keep theirs.
+                subDirectory ?: defaultSubDirectory(settings.downloadLocation),
+            )
         } else {
             publishViaLegacy(settings.downloadLocation, stagingFile, safeName)
         }
@@ -89,6 +99,18 @@ open class MediaStoreFileWriter @Inject constructor(
 
     /** Device API level — seam for tests pinning the 26–28 vs 29+ split. */
     protected open fun deviceSdkInt(): Int = Build.VERSION.SDK_INT
+
+    /**
+     * App-named subfolder of the chosen collection — literal platform
+     * directory segments (stable names, never user content). The actual
+     * relative-path column reference lives only in the Q+ publisher.
+     */
+    private fun defaultSubDirectory(location: DownloadLocation): String = when (location) {
+        DownloadLocation.DOWNLOADS -> "Download/NarcicTub"
+        DownloadLocation.MUSIC -> "Music/NarcicTub"
+        DownloadLocation.MOVIES -> "Movies/NarcicTub"
+        DownloadLocation.DCIM -> "DCIM/NarcicTub"
+    }
 
     /**
      * Custom-folder path (SAF document tree, any API level). Takes the raw

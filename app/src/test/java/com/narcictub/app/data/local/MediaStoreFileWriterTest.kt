@@ -70,6 +70,7 @@ class MediaStoreFileWriterTest {
         settingsRepository = FakeSettingsRepository(settings),
     ) {
         val qPlusNames = mutableListOf<String>()
+        val qPlusSubDirs = mutableListOf<String?>()
         val legacyNames = mutableListOf<String>()
         val safTreeUris = mutableListOf<String>()
         var failSaf = false
@@ -95,6 +96,7 @@ class MediaStoreFileWriterTest {
             subDirectory: String?,
         ): Uri {
             qPlusNames.add(safeName)
+            qPlusSubDirs.add(subDirectory)
             return mockk(relaxed = true)
         }
 
@@ -160,6 +162,36 @@ class MediaStoreFileWriterTest {
     }
 
     // ===== 4. custom folder (SAF) dispatch =====
+
+    @Test
+    fun `default publish lands in the app named subfolder of the collection`() {
+        for (location in DownloadLocation.entries) {
+            val writer = TestWriter(29, settings = AppSettings(downloadLocation = location))
+            runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4") }
+            val expected = when (location) {
+                DownloadLocation.DOWNLOADS -> "Download/NarcicTub"
+                DownloadLocation.MUSIC -> "Music/NarcicTub"
+                DownloadLocation.MOVIES -> "Movies/NarcicTub"
+                DownloadLocation.DCIM -> "DCIM/NarcicTub"
+            }
+            assertEquals("location $location", listOf<String?>(expected), writer.qPlusSubDirs)
+        }
+    }
+
+    @Test
+    fun `explicit sub directory passes through unchanged`() {
+        val writer = TestWriter(29)
+        runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4", subDirectory = "Download/Custom") }
+        assertEquals(listOf<String?>("Download/Custom"), writer.qPlusSubDirs)
+    }
+
+    @Test
+    fun `custom folder override is applied before the subfolder default`() {
+        val writer = TestWriter(29, settings = AppSettings(customDownloadFolderUri = "content://x/tree/y"))
+        runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4") }
+        assertTrue(writer.qPlusSubDirs.isEmpty())
+        assertEquals(1, writer.safTreeUris.size)
+    }
 
     @Test
     fun `custom folder routes to the SAF publisher on every API level`() {

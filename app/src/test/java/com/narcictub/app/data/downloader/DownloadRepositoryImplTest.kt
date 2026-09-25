@@ -230,6 +230,9 @@ class DownloadRepositoryImplTest {
         var stagingOverride: File? = null
         private val root = stagingRoot
         override fun stagingRoot(): File = stagingOverride ?: root
+
+        // JVM tests never start the (framework-bound) foreground service.
+        override fun ensureForegroundServiceRunning() {}
     }
 
     private fun repositoryFull(

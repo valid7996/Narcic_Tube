@@ -1,15 +1,20 @@
 package com.narcictub.app.ui.share
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.MainActivity
 import com.narcictub.app.ui.theme.NarcicTubTheme
@@ -32,6 +37,15 @@ import dagger.hilt.android.AndroidEntryPoint
 class ShareDownloadActivity : ComponentActivity() {
 
     private val viewModel: ShareDownloadViewModel by viewModels()
+
+    /**
+     * Notifications are requested the moment the user acts ("Download" tap)
+     * — never at open — so progress/completion notifications can appear for
+     * the background download. A denial changes nothing: the download still
+     * runs and in-app state remains the source of truth.
+     */
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,11 +70,21 @@ class ShareDownloadActivity : ComponentActivity() {
                     onDismiss = ::finish,
                     state = state,
                     onVariantSelected = viewModel::onVariantSelected,
-                    onDownload = viewModel::onDownloadSelected,
+                    onDownload = ::requestNotificationsAndDownload,
                     onRetry = viewModel::retry,
                 )
             }
         }
+    }
+
+    private fun requestNotificationsAndDownload() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.onDownloadSelected()
     }
 
     /** "Go to downloads": opens the main app directly on the Downloads tab. */

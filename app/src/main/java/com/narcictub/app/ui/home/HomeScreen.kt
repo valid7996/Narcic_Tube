@@ -1,5 +1,10 @@
 package com.narcictub.app.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,7 +41,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
@@ -63,12 +70,29 @@ fun HomeScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // Notifications are requested the moment the user acts ("Download" tap)
+    // — never at launch. A denial changes nothing: downloads still run and
+    // in-app state remains the source of truth.
+    val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+    val requestNotificationsAndDownload = {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        viewModel.onDownload()
+    }
+
     HomeContent(
         state = state,
         onUrlChange = viewModel::onUrlChange,
         onClear = viewModel::onClear,
         onResolve = viewModel::onResolve,
-        onDownload = viewModel::onDownload,
+        onDownload = requestNotificationsAndDownload,
         onVariantSelected = viewModel::onVariantSelected,
         onQueuedMessageShown = viewModel::onQueuedMessageShown,
         modifier = modifier,

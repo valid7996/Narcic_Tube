@@ -15,6 +15,7 @@ import com.narcictub.app.domain.FileNameSanitizer
 import com.narcictub.app.domain.repository.DownloadRepository
 import com.narcictub.app.domain.repository.HistoryRepository
 import com.narcictub.app.domain.repository.SettingsRepository
+import com.narcictub.app.notify.DownloadForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -124,6 +125,10 @@ open class DownloadRepositoryImpl @Inject constructor(
                 durationSeconds = durationSeconds,
             ),
         )
+        // Keep the process alive for the transfer (background download):
+        // without the foreground service an empty process — e.g. right after
+        // the share dialog is dismissed — is killed along with the queue.
+        ensureForegroundServiceRunning()
         synchronized(this) { waitingIds.addLast(id) }
         workScope.launch { pumpQueue() }
         return id
@@ -456,6 +461,15 @@ open class DownloadRepositoryImpl @Inject constructor(
 
     /** Root of the shared staging directory. Overridable for tests. */
     protected open fun stagingRoot(): File = File(context.cacheDir, STAGING_DIR)
+
+    /**
+     * Starts the download foreground service (idempotent) so an empty
+     * process is never killed mid-transfer. Framework seam — overridden to
+     * a no-op in JVM tests (android.jar methods throw there).
+     */
+    protected open fun ensureForegroundServiceRunning() {
+        DownloadForegroundService.start(context)
+    }
 
     private fun stagingFileFor(id: Long): File =
         File(stagingRoot().apply { mkdirs() }, "narcictub_${id}.part")
