@@ -52,6 +52,9 @@ import com.narcictub.app.data.ytdlp.YtDlpCookies
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
+import com.narcictub.app.ui.theme.Hexagon
+import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.honeycomb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,6 +98,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .honeycomb(MaterialTheme.colorScheme.primary, alpha = 0.05f, tile = 72.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -145,12 +149,19 @@ fun SettingsScreen(
 
 @Composable
 private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
+    // Honey section header: hexagon bullet + tracked uppercase label.
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-    )
+    ) {
+        Hexagon(size = 10.dp, fill = HoneyGradient)
+        Text(
+            text = title.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 6.dp),
+        )
+    }
 }
 
 /** Theme: three mutually exclusive modes in a segmented row. */

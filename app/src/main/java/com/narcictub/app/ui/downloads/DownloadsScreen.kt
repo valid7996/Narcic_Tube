@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Downloading
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -71,6 +73,7 @@ import com.narcictub.app.domain.model.DownloadProgress
 import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.domain.model.DownloadsOverview
 import com.narcictub.app.domain.model.HistoryItem
+import com.narcictub.app.ui.theme.BeeFlightOverlay
 import com.narcictub.app.ui.theme.BeeIcon
 import com.narcictub.app.ui.theme.HexGauge
 import com.narcictub.app.ui.theme.HexPointyShape
@@ -96,6 +99,7 @@ import java.time.Instant
 @Composable
 fun DownloadsScreen(
     modifier: Modifier = Modifier,
+    onPlayMedia: (Long) -> Unit,
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val overview by viewModel.overview.collectAsStateWithLifecycle()
@@ -107,9 +111,11 @@ fun DownloadsScreen(
         onCancel = viewModel::onCancel,
         onRetry = viewModel::onRetry,
         onRemove = viewModel::onRemove,
+        onRemoveRecordOnly = viewModel::onRemoveRecordOnly,
         onClearFinished = viewModel::onRemoveCompletedConfirmed,
         onClearFailed = viewModel::onRemoveFailedConfirmed,
         onMessageShown = viewModel::onMessageShown,
+        onPlayMedia = onPlayMedia,
         modifier = modifier,
     )
 }
@@ -122,9 +128,11 @@ fun DownloadsScreenContent(
     onCancel: (Long) -> Unit,
     onRetry: (Long) -> Unit,
     onRemove: (Long) -> Unit,
+    onRemoveRecordOnly: (Long) -> Unit,
     onClearFinished: () -> Unit,
     onClearFailed: () -> Unit,
     onMessageShown: () -> Unit,
+    onPlayMedia: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state = remember(overview) { overview.toUiState() }
@@ -144,6 +152,23 @@ fun DownloadsScreenContent(
 
     /** Row pending destructive-removal confirmation (COMPLETED only). */
     var confirmRemoveId by remember { mutableStateOf<Long?>(null) }
+
+    // ─── Signature completion moment: a bee crosses the screen whenever a
+    // download lands COMPLETED. Diff completed ids against the previous
+    // snapshot; the first snapshot (null baseline) never fires.
+    var beeFlightKey by remember { mutableStateOf(0) }
+    var seenCompletedIds by remember { mutableStateOf<Set<Long>?>(null) }
+    val completedIds = remember(overview) {
+        overview.items.filter { it.status == DownloadStatus.COMPLETED }.map { it.id }.toSet()
+    }
+    LaunchedEffect(completedIds) {
+        val seen = seenCompletedIds
+        if (seen != null) {
+            val fresh = completedIds - seen
+            if (fresh.isNotEmpty()) beeFlightKey += fresh.size
+        }
+        seenCompletedIds = completedIds
+    }
 
     Scaffold(
         modifier = modifier,
@@ -168,64 +193,72 @@ fun DownloadsScreenContent(
         } else if (state.isEmpty) {
             EmptyState(Modifier.padding(padding).fillMaxSize())
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (state.active.isNotEmpty() || state.queue.isNotEmpty() || state.finished.isNotEmpty()) {
-                    item(key = "hive-stats") { HiveStatsRow(state) }
-                }
-                if (state.active.isNotEmpty() || state.queue.isNotEmpty()) {
-                    item(key = "hive-folder") {
-                        HiveFolder(
-                            rows = state.active + state.queue,
-                            onCancel = onCancel,
-                        )
+            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (state.active.isNotEmpty() || state.queue.isNotEmpty() || state.finished.isNotEmpty()) {
+                        item(key = "hive-stats") { HiveStatsRow(state) }
                     }
-                }
-                if (state.finished.isNotEmpty()) {
-                    // Fix 1: "Clear failed" lives IN the finished section and
-                    // is offered exactly while failed/cancelled records exist
-                    // — it opens the existing confirmation dialog below.
-                    item(key = "header-Finished") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Finished",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f),
+                    if (state.active.isNotEmpty() || state.queue.isNotEmpty()) {
+                        item(key = "hive-folder") {
+                            HiveFolder(
+                                rows = state.active + state.queue,
+                                onCancel = onCancel,
                             )
-                            if (state.hasFailed) {
-                                TextButton(
-                                    onClick = { confirmClearFailed = true },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                ) { Text("Clear failed") }
-                            }
                         }
                     }
-                    items(state.finished, key = { "finished-${it.id}" }) { row ->
-                        FinishedDownloadCard(
-                            row = row,
-                            onRetry = onRetry,
-                            // Fix 2: only COMPLETED removals (which delete the
-                            // published file) require confirmation; failed and
-                            // cancelled rows hold no file and remove immediately.
-                            onRemoveRequest = { target ->
-                                if (requiresRemovalConfirmation(target.status)) {
-                                    confirmRemoveId = target.id
+                    if (state.finished.isNotEmpty()) {
+                        // History header: hexagon bullet + count + inline
+                        // "Clear failed" exactly while failed records exist.
+                        item(key = "header-History") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Hexagon(size = 12.dp, fill = HoneyGradient)
+                                Text(
+                                    text = "  HISTORY",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                                SurfacePill(historyCount(state))
+                                if (state.hasFailed) {
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(
+                                        onClick = { confirmClearFailed = true },
+                                        contentPadding = PaddingValues(horizontal = 8.dp),
+                                    ) { Text("Clear failed") }
                                 } else {
-                                    onRemove(target.id)
+                                    Spacer(Modifier.weight(1f))
                                 }
-                            },
-                        )
+                            }
+                        }
+                        items(state.finished, key = { "dl-${it.id}" }) { row ->
+                            FinishedDownloadCard(
+                                row = row,
+                                onRetry = onRetry,
+                                onPlay = onPlayMedia,
+                                // Fix 2: only COMPLETED removals (which delete
+                                // the published file) require confirmation;
+                                // failed and cancelled rows hold no file and
+                                // remove immediately.
+                                onRemoveRequest = { target ->
+                                    if (requiresRemovalConfirmation(target.status)) {
+                                        confirmRemoveId = target.id
+                                    } else {
+                                        onRemove(target.id)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
+                // زنبور پروازی روی اتمام دانلود — بالای همه‌چیز
+                BeeFlightOverlay(flightKey = beeFlightKey)
             }
         }
     }
@@ -268,26 +301,37 @@ fun DownloadsScreenContent(
     }
 
     // Fix 2: destructive per-row removal — COMPLETED rows delete a published
-    // file, so they confirm first. Failed/cancelled rows never reach this
-    // dialog (no file exists for them). No paths or URIs are shown.
+    // file, so they confirm first and the user chooses between "remove from
+    // history" (file stays) and "delete the file too". Failed/cancelled
+    // rows never reach this dialog (no file exists for them). No paths or
+    // URIs are shown.
     if (confirmRemoveId != null) {
         AlertDialog(
             onDismissRequest = { confirmRemoveId = null },
-            title = { Text("Remove download and delete its file?") },
+            title = { Text("Remove from history?") },
             text = {
                 Text(
-                    "This removes the download from your list and permanently " +
-                        "deletes its downloaded file. This can't be undone.",
+                    "Keep the file and remove just the record, or delete the " +
+                        "downloaded file as well. This can't be undone.",
                 )
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val targetId = confirmRemoveId
-                        confirmRemoveId = null
-                        if (targetId != null) onRemove(targetId)
-                    },
-                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                Row {
+                    TextButton(
+                        onClick = {
+                            val targetId = confirmRemoveId
+                            confirmRemoveId = null
+                            if (targetId != null) onRemoveRecordOnly(targetId)
+                        },
+                    ) { Text("Keep file") }
+                    TextButton(
+                        onClick = {
+                            val targetId = confirmRemoveId
+                            confirmRemoveId = null
+                            if (targetId != null) onRemove(targetId)
+                        },
+                    ) { Text("Delete file", color = MaterialTheme.colorScheme.error) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { confirmRemoveId = null }) { Text("Cancel") }
@@ -490,6 +534,7 @@ private fun HiveFolder(rows: List<UiDownload>, onCancel: (Long) -> Unit) {
 private fun FinishedDownloadCard(
     row: UiDownload,
     onRetry: (Long) -> Unit,
+    onPlay: (Long) -> Unit,
     onRemoveRequest: (UiDownload) -> Unit,
 ) {
     Card(
@@ -527,6 +572,13 @@ private fun FinishedDownloadCard(
                     row.completedAtEpochMs?.let { CompletedLine(it) }
                 }
             }
+            // Completed rows open in the in-app player (Playback resolves
+            // availability itself and degrades to a safe unavailable state).
+            if (row.status == DownloadStatus.COMPLETED) {
+                IconButton(onClick = { onPlay(row.id) }) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Open media")
+                }
+            }
             if (offersRetryAction(row.status)) {
                 // Phase 9: the repository re-queues FAILED and CANCELLED rows
                 // alike — the affordance now matches that real capability.
@@ -547,6 +599,25 @@ private fun FinishedDownloadCard(
                 )
             }
         }
+    }
+}
+
+private fun historyCount(state: DownloadsUiState): String = state.finished.size.toString()
+
+@Composable
+private fun SurfacePill(text: String) {
+    Box(
+        Modifier
+            .padding(start = 8.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 8.dp, vertical = 1.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -770,7 +841,7 @@ private fun DownloadsEmptyPreview() {
             // Genuinely empty (a snapshot arrived with zero rows).
             overview = DownloadsOverview(isLoading = false),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -784,7 +855,7 @@ private fun DownloadsLoadingPreview() {
             // No snapshot yet — loading, not empty.
             overview = DownloadsOverview(),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -835,7 +906,7 @@ private fun DownloadsActivePreview() {
                 ),
             ),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }

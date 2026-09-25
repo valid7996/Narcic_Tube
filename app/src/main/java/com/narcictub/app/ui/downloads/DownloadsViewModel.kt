@@ -8,6 +8,7 @@ import com.narcictub.app.domain.usecase.ObserveDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveCompletedDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveFailedDownloadsUseCase
+import com.narcictub.app.domain.usecase.RemoveHistoryRecordUseCase
 import com.narcictub.app.domain.usecase.RetryDownloadUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -35,6 +36,7 @@ class DownloadsViewModel @Inject constructor(
     private val removeDownload: RemoveDownloadUseCase,
     private val removeCompleted: RemoveCompletedDownloadsUseCase,
     private val removeFailed: RemoveFailedDownloadsUseCase,
+    private val removeRecord: RemoveHistoryRecordUseCase,
 ) : ViewModel() {
 
     val overview: StateFlow<DownloadsOverview> = observeDownloads()
@@ -84,6 +86,26 @@ class DownloadsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 removeDownload(id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _transient.update { it.copy(errorMessage = REMOVE_FAILED) }
+            } finally {
+                clearPending(id)
+            }
+        }
+    }
+
+    /**
+     * Removes ONLY the history record — the published file stays on disk
+     * (Phase 10 "remove from history" semantics, now on the merged
+     * Downloads+History screen).
+     */
+    fun onRemoveRecordOnly(id: Long) {
+        if (!markPending(id)) return
+        viewModelScope.launch {
+            try {
+                removeRecord(id)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

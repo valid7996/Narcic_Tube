@@ -5,11 +5,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -19,7 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.narcictub.app.ui.downloads.DownloadsScreen
-import com.narcictub.app.ui.history.HistoryScreen
+import com.narcictub.app.ui.theme.honeycomb
 import com.narcictub.app.ui.home.HomeScreen
 import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
@@ -50,7 +52,12 @@ fun NarcicTubApp(
     }
 
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.honeycomb(
+            MaterialTheme.colorScheme.primary,
+            alpha = 0.05f,
+            tile = 80.dp,
+        ),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
                 NarcicTubBottomBar(
@@ -75,9 +82,9 @@ fun NarcicTubApp(
             },
         ) {
             composable<Destination.Home> { HomeScreen() }
-            composable<Destination.Downloads> { DownloadsScreen() }
-            composable<Destination.History> {
-                HistoryScreen(
+            composable<Destination.Downloads> {
+                // تاریخچه داخل همین صفحه است: پوشه کندو بالا، تاریخچه پایین
+                DownloadsScreen(
                     onPlayMedia = { itemId ->
                         navController.navigate(Destination.Playback(itemId))
                     },

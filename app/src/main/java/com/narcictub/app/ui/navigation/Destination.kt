@@ -14,9 +14,6 @@ sealed interface Destination {
     @Serializable
     data object Downloads : Destination
 
-    @Serializable
-    data object History : Destination
-
     /**
      * PHASE 11: in-app playback of ONE completed, available local media
      * record. Not a top-level tab — the bottom bar hides on this route.
@@ -30,10 +27,10 @@ sealed interface Destination {
     data object Settings : Destination
 }
 
-/** Top-level tabs shown in the bottom bar, in display order. */
+/** Top-level tabs shown in the bottom bar, in display order. History
+ * lives inside the Downloads screen (hive folder up, history down). */
 val topLevelDestinations = listOf(
     Destination.Home,
     Destination.Downloads,
-    Destination.History,
     Destination.Settings,
 )

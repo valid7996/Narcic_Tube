@@ -9,6 +9,7 @@ import com.narcictub.app.domain.usecase.ObserveDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveCompletedDownloadsUseCase
 import com.narcictub.app.domain.usecase.RemoveDownloadUseCase
 import com.narcictub.app.domain.usecase.RemoveFailedDownloadsUseCase
+import com.narcictub.app.domain.usecase.RemoveHistoryRecordUseCase
 import com.narcictub.app.domain.usecase.RetryDownloadUseCase
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
@@ -104,6 +105,7 @@ class DownloadsViewModelTest {
         removeDownload = RemoveDownloadUseCase(repo),
         removeCompleted = RemoveCompletedDownloadsUseCase(repo),
         removeFailed = RemoveFailedDownloadsUseCase(repo),
+        removeRecord = RemoveHistoryRecordUseCase(repo),
     )
 
     @Before
