@@ -155,13 +155,14 @@ open class YtDlpEngine @Inject constructor(
     }
 
     private fun applyCommonOptions(request: YoutubeDLRequest) {
-        // No-login YouTube access (SnapTube-style): prefer the player clients
-        // that don't demand a login or PO token for most public media, in a
-        // fallback chain — yt-dlp walks the list when a client fails. The
-        // login-free clients cover regular videos; age-restricted/private
-        // media still benefits from the optional imported cookies below.
-        request.addOption("--extractor-args", YOUTUBE_CLIENT_EXTRACTOR_ARGS)
-        // Optional login session (Settings → import cookies.txt).
+        // No --extractor-args here, deliberately: yt-dlp's default client set
+        // returns the full https DASH format list (all heights + audio-only),
+        // and logs in are not required for regular videos. Alternative
+        // clients (android_vr/tv/ios) were tried and REGRESS hard: they
+        // return HLS-only streams, which collapse the variant list to the
+        // single 360p muxed format and fail to download (PO-token gating).
+        // Optional login session (Settings → import cookies.txt) still
+        // applies on top for age-restricted/private media.
         if (YtDlpCookies.exists(context)) {
             request.addOption("--cookies", YtDlpCookies.file(context).absolutePath)
         }
@@ -176,12 +177,5 @@ open class YtDlpEngine @Inject constructor(
         const val AUTO_UPDATE_ON_LAUNCH = true
         const val WARM_UP_WAIT_MS = 20_000L
         const val DENO_LIBRARY_NAME = "libdeno.so"
-
-        /**
-         * android_vr: no login, no PO token, high quality; tv/ios as
-         * fallbacks. Deprecated clients are skipped by yt-dlp with a
-         * warning — the chain degrades gracefully, never hard-fails.
-         */
-        const val YOUTUBE_CLIENT_EXTRACTOR_ARGS = "youtube:player_client=android_vr,tv,ios"
     }
 }
