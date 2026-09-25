@@ -3,6 +3,7 @@ package com.narcictub.app.ui.navigation
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
@@ -14,7 +15,9 @@ import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 
 /**
- * Material 3 bottom navigation bar bound to top-level destinations.
+ * Material 3 bottom navigation bar bound to top-level destinations. The
+ * container sits on the theme's surface-container step so the pill-shaped
+ * active indicator reads clearly against it.
  */
 @Composable
 fun NarcicTubBottomBar(
@@ -23,7 +26,10 @@ fun NarcicTubBottomBar(
     onNavigate: (Destination) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    NavigationBar(modifier = modifier) {
+    NavigationBar(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
         destinations.forEach { entry ->
             val selected = currentDestination?.hasRoute(entry.destination::class) == true
             NavigationBarItem(

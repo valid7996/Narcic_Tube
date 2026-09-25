@@ -2,13 +2,19 @@ package com.narcictub.app.ui.home
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,10 +24,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -40,20 +48,31 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
-import androidx.core.content.ContextCompat
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaVariant
+import com.narcictub.app.ui.theme.BrandOnPrimary
+import com.narcictub.app.ui.theme.BrandPrimary
+import com.narcictub.app.ui.theme.BrandPrimaryDim
 import com.narcictub.app.ui.theme.NarcicTubTheme
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * Home screen: URL input, validation feedback, resolve + queue-download
@@ -126,15 +145,34 @@ private fun HomeContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = "NarcicTub",
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Text(
-            text = "Paste a direct media link to begin",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        // Hero banner: the brand moment of the screen — gradient surface,
+        // app name and a one-line guide into the flow.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(MaterialTheme.shapes.extraLarge)
+                .background(
+                    Brush.linearGradient(
+                        listOf(BrandPrimaryDim, BrandPrimary),
+                    ),
+                )
+                .padding(20.dp),
+        ) {
+            Column {
+                Text(
+                    text = "NarcicTub",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = BrandOnPrimary,
+                )
+                Text(
+                    text = "Paste a link — pick a format — download.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BrandOnPrimary.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
 
         OutlinedTextField(
             value = state.url,
@@ -214,19 +252,26 @@ private fun HomeContent(
 
         if (queuedVisible) {
             ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(
+                Row(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = "Added to downloads",
-                        style = MaterialTheme.typography.titleMedium,
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
                     )
-                    Text(
-                        text = "Track it on the Downloads tab.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Text(
+                            text = "Added to downloads",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = "Track it on the Downloads tab.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
         }
@@ -255,23 +300,38 @@ private fun ResolvedMediaCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(
-                text = "Ready to download",
-                style = MaterialTheme.typography.titleMedium,
-            )
-            // Only real metadata: title when the source provided one, the
-            // host, and format/size/quality strictly when known.
-            info.title?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Real cover from the source when it provided one; a neat
+                // placeholder while loading or when it didn't.
+                info.thumbnailUrl?.let { thumb ->
+                    MediaThumbnail(
+                        url = thumb,
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Ready to download",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    // Only real metadata: title when the source provided one,
+                    // and the host — never a placeholder or a guess.
+                    info.title?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Text(
+                        text = info.host,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            Text(
-                text = info.host,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             info.mimeType?.let {
                 Text(
                     text = "Format: $it",
@@ -428,6 +488,49 @@ private fun HomeContentActivePreview() {
             onDownload = {},
             onQueuedMessageShown = {},
         )
+    }
+}
+
+/**
+ * Small dependency-free cover image: decodes the source-provided thumbnail
+ * (https only) off the main thread and shows a tidy placeholder while
+ * loading or when the media has no usable cover. Purely decorative —
+ * failures degrade to the placeholder, never an error.
+ */
+@Composable
+private fun MediaThumbnail(url: String, modifier: Modifier = Modifier) {
+    if (!url.startsWith("https://")) return
+    var bitmap by remember(url) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(url) {
+        bitmap = withContext(Dispatchers.IO) {
+            runCatching {
+                java.net.URL(url).openStream().use { BitmapFactory.decodeStream(it) }
+            }.getOrNull()
+        }
+    }
+    Box(
+        modifier = modifier
+            .width(96.dp)
+            .aspectRatio(16f / 10f)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        contentAlignment = Alignment.Center,
+    ) {
+        val loaded = bitmap
+        if (loaded != null) {
+            Image(
+                bitmap = loaded.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                imageVector = Icons.Filled.PlayCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
