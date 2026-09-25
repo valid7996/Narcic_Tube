@@ -20,7 +20,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.ui.downloads.DownloadsScreen
+import com.narcictub.app.ui.downloads.DownloadsViewModel
 import com.narcictub.app.ui.theme.honeycomb
 import com.narcictub.app.ui.home.HomeScreen
 import com.narcictub.app.ui.playback.PlaybackScreen
@@ -40,6 +42,15 @@ fun NarcicTubApp(
     val currentDestination = backStackEntry?.destination
     val showBottomBar = topLevelDestinations.any { dest ->
         currentDestination?.hasRoute(dest::class) == true
+    }
+
+    // زنده: تعداد دانلودهای فعال برای نشان روی تب Downloads
+    val downloadsViewModel: DownloadsViewModel = hiltViewModel()
+    val downloadsOverview by downloadsViewModel.overview.collectAsStateWithLifecycle()
+    val activeDownloads = downloadsOverview.items.count {
+        it.status == DownloadStatus.QUEUED ||
+            it.status == DownloadStatus.DOWNLOADING ||
+            it.status == DownloadStatus.PAUSED
     }
 
     // One-shot deep link from the share dialog's "Go to downloads" button:
@@ -64,6 +75,7 @@ fun NarcicTubApp(
                     destinations = topLevelDestinationUiList,
                     currentDestination = currentDestination,
                     onNavigate = { dest -> navController.navigateToTopLevel(dest) },
+                    badgeCount = activeDownloads,
                 )
             }
         },

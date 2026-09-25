@@ -4,7 +4,9 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import com.narcictub.app.ui.theme.honeyAccentTextColor
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -129,23 +132,35 @@ fun ShareDownloadSheet(
             }
 
             if (state.resolvedMedia != null && !state.queued) {
-                Spacer(Modifier.height(8.dp))
-                Button(
-                    onClick = onDownload,
-                    enabled = state.canDownload,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(44.dp),
-                    shape = RoundedCornerShape(22.dp),
-                ) {
-                    if (state.isEnqueueing) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    } else {
-                        Text("Download")
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Cancel = بستن شیت؛ کاربر در همان اپ می‌ماند
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                    ) {
+                        Text("Cancel")
+                    }
+                    Button(
+                        onClick = onDownload,
+                        enabled = state.canDownload,
+                        modifier = Modifier
+                            .weight(1.4f)
+                            .height(44.dp),
+                        shape = RoundedCornerShape(22.dp),
+                    ) {
+                        if (state.isEnqueueing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Text("Start Download")
+                        }
                     }
                 }
             }
@@ -155,22 +170,18 @@ fun ShareDownloadSheet(
 
 @Composable
 private fun SheetHeader(title: String?, onDismiss: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
             Text(
-                text = "Download as",
-                style = MaterialTheme.typography.titleMedium,
+                text = "SELECT QUALITY",
+                style = MaterialTheme.typography.labelMedium,
+                color = honeyAccentTextColor(),
+            )
+            Text(
+                text = title ?: "Download as",
+                style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
-            if (title != null) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
         IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
             Icon(
@@ -320,31 +331,21 @@ private fun FormatRowItem(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(
-                imageVector = row.icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = row.label,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else null,
-                modifier = Modifier
-                    .padding(start = 10.dp)
-                    .weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            row.sizeText?.let { size ->
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = size,
-                    style = MaterialTheme.typography.labelMedium,
+                    text = row.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = row.subtitle.orEmpty(),
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 8.dp),
                 )
             }
-            RadioButton(selected = selected, onClick = null, modifier = Modifier.size(28.dp))
+            RadioButton(selected = selected, onClick = null, modifier = Modifier.size(30.dp))
         }
     }
 }

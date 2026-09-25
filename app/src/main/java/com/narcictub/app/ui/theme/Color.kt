@@ -1,5 +1,7 @@
 package com.narcictub.app.ui.theme
 
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /*
@@ -48,6 +50,10 @@ val BrandSurfaceContainerHighest = Color(0xFF3F3519)
 val BrandSuccess = Color(0xFF7CB877)
 val BrandWarning = Color(0xFFD89A18)
 
+/** Success green per theme — used by the "Added to hive" confirmation. */
+val HoneySuccessLight = Color(0xFF3E7A41)
+val HoneySuccessDark = Color(0xFF7CB877)
+
 // ─── Light scheme (cream / honey; *Light names) ───
 val BrandBackgroundLight = Color(0xFFF7F1E1)
 val BrandOnBackgroundLight = Color(0xFF241D0F)
@@ -77,3 +83,10 @@ val BrandErrorLight = Color(0xFFC94F3D)
 val BrandOnErrorLight = Color(0xFFFFF8F6)
 val BrandErrorContainerLight = Color(0xFFFFDAD6)
 val BrandOnErrorContainerLight = Color(0xFF690005)
+
+@Composable
+fun honeySuccessColor(): Color = if (isSystemInDarkTheme()) HoneySuccessDark else HoneySuccessLight
+
+/** Accent text (honey-gold readable on both warm charcoal and cream). */
+@Composable
+fun honeyAccentTextColor(): Color = if (isSystemInDarkTheme()) Color(0xFFFFC95E) else Color(0xFF9A6A00)

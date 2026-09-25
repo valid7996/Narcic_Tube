@@ -20,6 +20,8 @@ internal data class FormatRow(
     val variant: MediaVariant,
     /** Primary label, e.g. "1080p" / "M4A" / "Original". */
     val label: String,
+    /** Secondary line, e.g. "Video · 64.8 MB"; null when nothing known. */
+    val subtitle: String?,
     /** Real, server-reported size ("16.3 MB") or null when unknown. */
     val sizeText: String?,
 )
@@ -73,11 +75,13 @@ internal fun buildFormatRows(variants: List<MediaVariant>): List<FormatRow> =
             emptyList()
         } else {
             sortedVariantsForDisplay(inGroup).map { variant ->
+                val sizeText = formatBytes(variant.sizeBytes)
                 FormatRow(
                     group = group,
                     variant = variant,
                     label = variantLabel(variant),
-                    sizeText = formatBytes(variant.sizeBytes),
+                    subtitle = listOfNotNull(group.label, sizeText).joinToString(" · "),
+                    sizeText = sizeText,
                 )
             }
         }

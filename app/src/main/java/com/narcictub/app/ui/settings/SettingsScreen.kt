@@ -5,32 +5,38 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,30 +48,29 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.data.ytdlp.YtDlpCookies
 import com.narcictub.app.domain.model.AppSettings
-import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.ui.theme.Hexagon
 import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.honeyAccentTextColor
 import com.narcictub.app.ui.theme.honeycomb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * PHASE 13 — Settings: Appearance (theme), Downloads (location + concurrent
- * limit). Values come from the DataStore-backed repository through use
- * cases and persist across restarts; the theme selection drives the REAL
- * app theme. Loading and error states are safe — no crashes, no raw
- * exceptions. Only settings with real consumers are shown; the model's
- * wifi-only/notifications fields are intentionally not exposed here.
+ * PHASE 13 — Settings, honey-styled: two grouped cards ("Appearance &
+ * Theme", "Download Settings") with compact title/subtitle/action rows.
+ * Values come from the DataStore-backed repository through use cases and
+ * persist across restarts; the theme selection drives the REAL app theme.
+ * Loading and error states are safe — no crashes, no raw exceptions.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,44 +106,60 @@ fun SettingsScreen(
                 .honeycomb(MaterialTheme.colorScheme.primary, alpha = 0.05f, tile = 72.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             state.errorMessage?.let { message ->
                 SettingsErrorBanner(message)
             }
 
-            SectionHeader("Appearance")
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    ThemeSection(
-                        selected = state.themeMode,
-                        onSelect = viewModel::onThemeModeSelected,
-                    )
+            // ─── APPEARANCE & THEME ───
+            SettingsCard("Appearance & Theme") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Color Theme",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Warm honey palette",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    SingleChoiceSegmentedButtonRow(Modifier.width(200.dp)) {
+                        val modes = ThemeMode.entries
+                        modes.forEachIndexed { index, mode ->
+                            SegmentedButton(
+                                selected = state.themeMode == mode,
+                                onClick = { viewModel.onThemeModeSelected(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                                label = { Text(themeLabel(mode)) },
+                            )
+                        }
+                    }
                 }
             }
 
-            SectionHeader("Downloads")
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    DownloadLocationSection(
-                        selected = state.downloadLocation,
-                        onSelect = viewModel::onDownloadLocationSelected,
-                    )
-                    CustomFolderSection(
+            // ─── DOWNLOAD SETTINGS ───
+            SettingsCard("Download Settings") {
+                Column {
+                    StorageLocationRow(
                         customFolderUri = state.customFolderUri,
                         onFolderPicked = viewModel::onCustomFolderSelected,
                     )
-                    ConcurrentDownloadsSection(
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ConcurrentDownloadsRow(
                         value = state.concurrentDownloads,
                         onSelect = viewModel::onConcurrentDownloadsSelected,
                     )
-                }
-            }
-
-            SectionHeader("YouTube & Instagram login (optional)")
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    LoginCookiesSection()
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    CookiesRow()
                 }
             }
 
@@ -147,96 +168,85 @@ fun SettingsScreen(
     }
 }
 
+/** Grouped honey card: hexagon-bullet header INSIDE the card, content below. */
 @Composable
-private fun SectionHeader(title: String) {
-    // Honey section header: hexagon bullet + tracked uppercase label.
+private fun SettingsCard(header: String, content: @Composable ColumnScope.() -> Unit) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, top = 14.dp),
+            ) {
+                Hexagon(size = 10.dp, fill = HoneyGradient)
+                Text(
+                    text = header.uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = honeyAccentTextColor(),
+                    modifier = Modifier.padding(start = 6.dp),
+                )
+            }
+            content()
+        }
+    }
+}
+
+/** Compact setting row: title + subtitle on the left, action on the right. */
+@Composable
+private fun SettingRow(
+    title: String,
+    subtitle: String,
+    action: @Composable () -> Unit,
+) {
     Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
     ) {
-        Hexagon(size = 10.dp, fill = HoneyGradient)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        action()
+    }
+}
+
+/** Outlined pill button ("Change" / "Import" / …). */
+@Composable
+private fun OutlinedPill(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
         Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 6.dp),
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }
 
-/** Theme: three mutually exclusive modes in a segmented row. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ThemeSection(
-    selected: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
-) {
-    Text(
-        text = "Theme",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        val modes = ThemeMode.entries
-        modes.forEachIndexed { index, mode ->
-            SegmentedButton(
-                selected = selected == mode,
-                onClick = { onSelect(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(themeLabel(mode)) },
-            )
-        }
-    }
-    Text(
-        text = "Applied immediately across the app.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp),
-    )
-}
-
-/** Download location: real persisted enum, shown as a radio group. */
-@Composable
-private fun DownloadLocationSection(
-    selected: DownloadLocation,
-    onSelect: (DownloadLocation) -> Unit,
-) {
-    Text(
-        text = "Download location",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-    DownloadLocation.entries.forEach { location ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .selectable(
-                    selected = selected == location,
-                    role = Role.RadioButton,
-                    onClick = { onSelect(location) },
-                )
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RadioButton(selected = selected == location, onClick = null)
-            Text(
-                text = locationLabel(location),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 12.dp),
-            )
-        }
-    }
-}
-
 /**
- * Custom save folder: a user-picked SAF document tree that overrides the
- * preset location above. The persistable grant is taken here — the picker
- * result only stays usable across restarts with it — and released again
- * when the folder is removed. Writes go through the view model; a failed
- * persist shows the shared error banner.
+ * Storage location row. Default is the app-named folder inside the shared
+ * Downloads collection ("Downloads/NarcicTub"); "Change" opens the SAF
+ * folder picker and takes a persistable grant; "Default" clears an active
+ * custom folder again (releasing the grant).
  */
 @Composable
-private fun CustomFolderSection(
+private fun StorageLocationRow(
     customFolderUri: String?,
     onFolderPicked: (String?) -> Unit,
 ) {
@@ -254,50 +264,29 @@ private fun CustomFolderSection(
         }
     }
 
-    Text(
-        text = "Custom folder",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-    )
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp)) {
-            Text(
-                text = customFolderUri?.let { folderDisplayName(it) }
-                    ?: "Off — files follow the location above.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (customFolderUri != null) {
-                Text(
-                    text = "New downloads are saved here, overriding the location above.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            Row(
-                modifier = Modifier.padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Button(onClick = { picker.launch(null) }) {
-                    Text(if (customFolderUri == null) "Choose folder…" else "Change folder…")
-                }
+    SettingRow(
+        title = "Storage Location",
+        subtitle = customFolderUri?.let { folderDisplayName(it) } ?: "Downloads / NarcicTub",
+        action = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (customFolderUri != null) {
-                    TextButton(onClick = {
-                        runCatching {
-                            context.contentResolver.releasePersistableUriPermission(
-                                Uri.parse(customFolderUri),
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-                            )
-                        }
-                        onFolderPicked(null)
-                    }) {
-                        Text("Remove")
-                    }
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                context.contentResolver.releasePersistableUriPermission(
+                                    Uri.parse(customFolderUri),
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                                )
+                            }
+                            onFolderPicked(null)
+                        },
+                    ) { Text("Default") }
                 }
+                OutlinedPill(text = "Change") { picker.launch(null) }
             }
-        }
-    }
+        },
+    )
 }
 
 /** Human-readable folder name from a SAF tree URI ("primary:Music/Foo" → "Music/Foo"). */
@@ -309,30 +298,37 @@ private fun folderDisplayName(uriText: String): String =
 
 /** Concurrent downloads: bounded slider; out-of-range values are impossible. */
 @Composable
-private fun ConcurrentDownloadsSection(
+private fun ConcurrentDownloadsRow(
     value: Int,
     onSelect: (Int) -> Unit,
 ) {
     // Local drag value so DataStore is written once per gesture, not per tick.
     var dragging by remember(value) { mutableFloatStateOf(value.toFloat()) }
 
-    Text(
-        text = "Concurrent downloads",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-    )
-    Slider(
-        value = dragging,
-        onValueChange = { dragging = it },
-        onValueChangeFinished = { onSelect(dragging.toInt()) },
-        valueRange = AppSettings.MIN_CONCURRENT_DOWNLOADS.toFloat()..AppSettings.MAX_CONCURRENT_DOWNLOADS.toFloat(),
-        steps = AppSettings.MAX_CONCURRENT_DOWNLOADS - AppSettings.MIN_CONCURRENT_DOWNLOADS - 1,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        text = "Up to $value download${if (value == 1) "" else "s"} run at the same time.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingRow(
+        title = "Concurrent Downloads",
+        subtitle = "Max active bees in hive",
+        action = {
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = honeyAccentTextColor(),
+                modifier = Modifier.padding(end = 10.dp),
+            )
+            Slider(
+                value = dragging,
+                onValueChange = { dragging = it },
+                onValueChangeFinished = { onSelect(dragging.toInt()) },
+                valueRange = AppSettings.MIN_CONCURRENT_DOWNLOADS.toFloat()..AppSettings.MAX_CONCURRENT_DOWNLOADS.toFloat(),
+                steps = AppSettings.MAX_CONCURRENT_DOWNLOADS - AppSettings.MIN_CONCURRENT_DOWNLOADS - 1,
+                modifier = Modifier.width(120.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            )
+        },
     )
 }
 
@@ -343,7 +339,7 @@ private fun ConcurrentDownloadsSection(
  * do the same. The file stays in app-private storage and is never backed up.
  */
 @Composable
-private fun LoginCookiesSection() {
+private fun CookiesRow() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var hasCookies by remember { mutableStateOf(YtDlpCookies.exists(context)) }
@@ -363,34 +359,32 @@ private fun LoginCookiesSection() {
         }
     }
 
-    Text(
-        text = "Export your browser cookies to a cookies.txt file and import it here. " +
-            "It stays on this device and is only used for YouTube and Instagram downloads.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = { picker.launch(arrayOf("*/*")) }) {
-            Text(if (hasCookies) "Replace cookies.txt" else "Import cookies.txt")
-        }
-        if (hasCookies) {
-            TextButton(
-                onClick = {
-                    YtDlpCookies.clear(context)
-                    hasCookies = false
-                    status = "Cookies removed."
-                },
-            ) {
-                Text("Remove")
-            }
-        }
-    }
-    status?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column {
+        SettingRow(
+            title = "YouTube & IG Cookies",
+            subtitle = if (hasCookies) "cookies.txt imported" else "None imported",
+            action = {
+                OutlinedPill(
+                    text = if (hasCookies) "Remove" else "Import",
+                ) {
+                    if (hasCookies) {
+                        YtDlpCookies.clear(context)
+                        hasCookies = false
+                        status = "Cookies removed."
+                    } else {
+                        picker.launch(arrayOf("*/*"))
+                    }
+                }
+            },
         )
+        status?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+            )
+        }
     }
 }
 
@@ -415,11 +409,4 @@ private fun themeLabel(mode: ThemeMode): String = when (mode) {
     ThemeMode.SYSTEM -> "System"
     ThemeMode.DARK -> "Dark"
     ThemeMode.LIGHT -> "Light"
-}
-
-private fun locationLabel(location: DownloadLocation): String = when (location) {
-    DownloadLocation.DOWNLOADS -> "Downloads"
-    DownloadLocation.MUSIC -> "Music"
-    DownloadLocation.MOVIES -> "Movies"
-    DownloadLocation.DCIM -> "DCIM (Camera)"
 }

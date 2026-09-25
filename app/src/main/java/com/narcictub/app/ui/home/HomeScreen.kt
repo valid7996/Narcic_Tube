@@ -7,9 +7,15 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,25 +29,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.PlayCircle
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.MusicNote
-import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,30 +58,36 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaVariant
-import com.narcictub.app.ui.theme.BrandOnPrimary
-import com.narcictub.app.ui.theme.BrandPrimary
-import com.narcictub.app.ui.theme.BrandPrimaryDim
 import com.narcictub.app.ui.theme.Hexagon
 import com.narcictub.app.ui.theme.HoneyGradient
 import com.narcictub.app.ui.theme.InkOnHoney
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.sp
 import com.narcictub.app.ui.theme.NarcicTubTheme
+import com.narcictub.app.ui.theme.honeySuccessColor
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -138,6 +149,19 @@ private fun HomeContent(
 ) {
     val clipboard = LocalClipboardManager.current
     var queuedVisible by remember { mutableStateOf(false) }
+    val successColor = honeySuccessColor()
+
+    // لرزش فیلد هنگام لینک نامعتبر (سه نوسان کوتاه)
+    val shakeX = remember { Animatable(0f) }
+    LaunchedEffect(state.validationMessage) {
+        if (state.validationMessage != null) {
+            repeat(3) {
+                shakeX.animateTo(10f, tween(60))
+                shakeX.animateTo(-10f, tween(60))
+            }
+            shakeX.animateTo(0f, tween(60))
+        }
+    }
 
     LaunchedEffect(state.queuedSuccessfully) {
         if (state.queuedSuccessfully) {
@@ -149,100 +173,153 @@ private fun HomeContent(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Hero banner: hexagon honey logo + brand + flow guide.
-        Row(
+        // ─── Hero: مرکزچین — لوگوی شش‌ضلعی بزرگ + نام + شعار ───
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(MaterialTheme.shapes.extraLarge)
-                .background(
-                    Brush.linearGradient(
-                        listOf(BrandPrimaryDim, BrandPrimary),
-                    ),
-                )
-                .padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(top = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Hexagon(size = 56.dp, fill = HoneyGradient) {
+            Hexagon(size = 96.dp, fill = HoneyGradient) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Filled.Download,
                         contentDescription = null,
                         tint = InkOnHoney,
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(44.dp),
                     )
                 }
             }
-            Column(Modifier.padding(start = 14.dp)) {
-                Text(
-                    text = "NarcicTub",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = BrandOnPrimary,
-                )
-                Text(
-                    text = "Paste a link — pick a format — download.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = BrandOnPrimary.copy(alpha = 0.85f),
-                )
-            }
+            Text(
+                text = "NarcicTub",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 14.dp),
+            )
+            Text(
+                text = "Paste a link – pick a format – download.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
 
-        OutlinedTextField(
-            value = state.url,
-            onValueChange = onUrlChange,
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("Video or audio link") },
-            placeholder = { Text("https://…") },
-            leadingIcon = { Icon(Icons.Filled.Link, contentDescription = null) },
-            trailingIcon = {
-                if (state.url.isNotEmpty()) {
-                    IconButton(onClick = onClear) {
-                        Icon(Icons.Filled.Clear, contentDescription = "Clear")
+        // ─── کارت لینک: هدر شش‌ضلعی + فیلد با Paste داخلی ───
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Hexagon(size = 10.dp, fill = HoneyGradient)
+                    Text(
+                        text = "Video or audio link",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(start = 6.dp),
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationX = shakeX.value }
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Link,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    BasicTextField(
+                        value = state.url,
+                        onValueChange = onUrlChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 10.dp),
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp,
+                        ),
+                        cursorBrush = Brush.verticalGradient(
+                            listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary),
+                        ),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Go,
+                        ),
+                        keyboardActions = KeyboardActions(onGo = { onDownload() }),
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxWidth()) {
+                                if (state.url.isEmpty()) {
+                                    Text(
+                                        "https://youtube.com/watch?v=…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                    if (state.url.isNotEmpty()) {
+                        IconButton(onClick = onClear, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                Icons.Filled.Clear,
+                                contentDescription = "Clear",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                            .clickable { clipboard.getText()?.text?.let(onUrlChange) }
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
+                    ) {
+                        Text(
+                            text = "Paste",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
                     }
                 }
-            },
-            supportingText = {
-                state.validationMessage?.let { Text(it) }
-            },
-            isError = state.validationMessage != null && state.url.isNotEmpty(),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Uri,
-                imeAction = ImeAction.Go,
-            ),
-            keyboardActions = KeyboardActions(onGo = { onDownload() }),
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedButton(
-                onClick = { clipboard.getText()?.text?.let(onUrlChange) },
-            ) {
-                Icon(Icons.Filled.ContentPaste, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Paste")
-            }
-            OutlinedButton(
-                onClick = onResolve,
-                enabled = state.isUrlValid && !state.isResolving,
-            ) {
-                Text(if (state.isResolving) "Resolving…" else "Resolve")
-            }
-            Button(
-                onClick = onDownload,
-                // Gated on a genuine direct-file resolution — never enabled
-                // on an unresolved or unsupported link.
-                enabled = state.canDownload && !state.isDownloading,
-                modifier = Modifier.weight(1f),
-            ) {
-                Icon(Icons.Filled.Download, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(if (state.isDownloading) "Queuing…" else "Download")
+                state.validationMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp, start = 2.dp),
+                    )
+                }
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    HoneyPillButton(
+                        text = if (state.isResolving) "Resolving…" else "Resolve",
+                        icon = Icons.Filled.Search,
+                        modifier = Modifier.weight(1.35f),
+                        enabled = state.isUrlValid && !state.isResolving,
+                        onClick = onResolve,
+                    )
+                    HoneyPillButton(
+                        text = if (state.isDownloading) "Queuing…" else "Download",
+                        icon = Icons.Filled.Download,
+                        modifier = Modifier.weight(1f),
+                        // Gated on a genuine resolution — the hatch pattern
+                        // marks the disabled state visually.
+                        enabled = state.canDownload && !state.isDownloading,
+                        onClick = onDownload,
+                    )
+                }
             }
         }
 
@@ -266,28 +343,26 @@ private fun HomeContent(
         }
 
         if (queuedVisible) {
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                    Column(modifier = Modifier.padding(start = 12.dp)) {
-                        Text(
-                            text = "Added to downloads",
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = "Track it on the Downloads tab.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+            // تأیید سبز «به کندو اضافه شد»
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(successColor.copy(alpha = 0.12f))
+                    .border(1.dp, successColor.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = successColor,
+                )
+                Text(
+                    text = "  Added to hive",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
 
@@ -299,7 +374,116 @@ private fun HomeContent(
             )
         }
 
+        // ─── کارت مراحل: شماره‌های شش‌ضلعی + توضیح دومتنی ───
+        val step = when {
+            state.resolvedMedia != null -> 3
+            state.isUrlValid || state.url.isNotBlank() -> 2
+            else -> 1
+        }
+        ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                listOf(
+                    Triple(1, "Paste Media Link", "YouTube videos, shorts, IG reels, direct MP4 or MP3 links."),
+                    Triple(2, "Resolve Formats", "Fetch quality tiers from 1080p to pure audio tracks."),
+                    Triple(3, "Fly to Hive", "Live progress, speed gauges, and automatic archiving."),
+                ).forEach { (n, title, description) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Hexagon(
+                            size = 34.dp,
+                            fill = if (step >= n) HoneyGradient else null,
+                            color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        ) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = n.toString(),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (step >= n) InkOnHoney else MaterialTheme.colorScheme.outline,
+                                )
+                            }
+                        }
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (step >= n) {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                } else {
+                                    MaterialTheme.colorScheme.outline
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(4.dp))
+    }
+}
+
+/** دکمه عسلی با گرادیان؛ غیرفعال = هاشور مورب ملایم (مطابق طراحی کندو) */
+@Composable
+private fun HoneyPillButton(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    Box(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(
+                if (enabled) {
+                    Brush.linearGradient(listOf(Color(0xFFFFD25E), Color(0xFFEFA100)))
+                } else {
+                    Brush.linearGradient(listOf(colors.surfaceContainerHigh, colors.surfaceContainerHigh))
+                },
+            )
+            .drawBehind {
+                if (!enabled) {
+                    val step = 9.dp.toPx()
+                    var x = -size.height
+                    while (x < size.width + size.height) {
+                        drawLine(
+                            colors.onSurfaceVariant.copy(alpha = 0.25f),
+                            Offset(x, size.height),
+                            Offset(x + size.height, 0f),
+                            3f,
+                        )
+                        x += step
+                    }
+                }
+            }
+            .clickable(enabled = enabled) { onClick() }
+            .padding(vertical = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (enabled) InkOnHoney else colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (enabled) InkOnHoney else colors.onSurfaceVariant,
+            )
+        }
     }
 }
 
