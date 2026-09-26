@@ -30,6 +30,7 @@ private object SettingsKeys {
     val THEME = stringPreferencesKey("theme")
     val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
     val CUSTOM_FOLDER_URI = stringPreferencesKey("custom_folder_uri")
+    val WA_STATUS_FOLDER_URI = stringPreferencesKey("wa_status_folder_uri")
     val WIFI_ONLY = booleanPreferencesKey("wifi_only")
     val CONCURRENT_DOWNLOADS = intPreferencesKey("concurrent_downloads")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
@@ -62,6 +63,8 @@ class SettingsRepositoryImpl @Inject constructor(
                     ?: DownloadLocation.DOWNLOADS,
                 customDownloadFolderUri = prefs[SettingsKeys.CUSTOM_FOLDER_URI]
                     ?.takeIf { it.isNotBlank() },
+                whatsappStatusFolderUri = prefs[SettingsKeys.WA_STATUS_FOLDER_URI]
+                    ?.takeIf { it.isNotBlank() },
                 wifiOnly = prefs[SettingsKeys.WIFI_ONLY] ?: true,
                 concurrentDownloads = (prefs[SettingsKeys.CONCURRENT_DOWNLOADS] ?: 3)
                     .coerceIn(MIN_CONCURRENT, MAX_CONCURRENT),
@@ -81,6 +84,13 @@ class SettingsRepositoryImpl @Inject constructor(
         dataStore.edit { prefs ->
             if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.CUSTOM_FOLDER_URI)
             else prefs[SettingsKeys.CUSTOM_FOLDER_URI] = uri
+        }
+    }
+
+    override suspend fun setWhatsappStatusFolder(uri: String?) {
+        dataStore.edit { prefs ->
+            if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.WA_STATUS_FOLDER_URI)
+            else prefs[SettingsKeys.WA_STATUS_FOLDER_URI] = uri
         }
     }
 

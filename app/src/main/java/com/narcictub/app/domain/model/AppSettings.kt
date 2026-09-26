@@ -21,6 +21,8 @@ data class AppSettings(
      * removed), so a download never dies because of the override.
      */
     val customDownloadFolderUri: String? = null,
+    /** SAF tree URI of the picked WhatsApp statuses folder (status saver). */
+    val whatsappStatusFolderUri: String? = null,
     val wifiOnly: Boolean = true,
     val concurrentDownloads: Int = 3,
     val notificationsEnabled: Boolean = true,

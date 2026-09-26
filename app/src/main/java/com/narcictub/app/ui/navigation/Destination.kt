@@ -23,6 +23,13 @@ sealed interface Destination {
     @Serializable
     data class Playback(val itemId: Long) : Destination
 
+    /**
+     * WhatsApp status saver — lists the picked .Statuses folder and saves
+     * items into the gallery. Opened from Settings.
+     */
+    @Serializable
+    data object Statuses : Destination
+
     @Serializable
     data object Settings : Destination
 }

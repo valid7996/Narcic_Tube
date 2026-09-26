@@ -9,6 +9,7 @@ import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
 import com.narcictub.app.domain.usecase.SetCustomDownloadFolderUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
+import com.narcictub.app.domain.usecase.SetWhatsappStatusFolderUseCase
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -74,6 +75,11 @@ class SettingsViewModelTest {
             state.value = state.value.copy(customDownloadFolderUri = uri)
         }
 
+        override suspend fun setWhatsappStatusFolder(uri: String?) {
+            if (failWrites) throw IOException("boom")
+            state.value = state.value.copy(whatsappStatusFolderUri = uri)
+        }
+
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
 
@@ -91,6 +97,7 @@ class SettingsViewModelTest {
         setThemeMode = SetThemeModeUseCase(repository),
         setDownloadLocation = SetDownloadLocationUseCase(repository),
         setCustomDownloadFolder = SetCustomDownloadFolderUseCase(repository),
+        setWhatsappStatusFolder = SetWhatsappStatusFolderUseCase(repository),
         setConcurrentDownloads = SetConcurrentDownloadsUseCase(repository),
     )
 

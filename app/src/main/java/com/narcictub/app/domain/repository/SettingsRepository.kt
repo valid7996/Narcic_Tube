@@ -20,6 +20,9 @@ interface SettingsRepository {
      */
     suspend fun setCustomDownloadFolder(uri: String?)
 
+    /** Persists (or clears with null) the WhatsApp statuses folder tree URI. */
+    suspend fun setWhatsappStatusFolder(uri: String?)
+
     suspend fun setWifiOnly(enabled: Boolean)
 
     suspend fun setConcurrentDownloads(count: Int)

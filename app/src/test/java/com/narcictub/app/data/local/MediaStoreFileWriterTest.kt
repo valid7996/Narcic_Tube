@@ -56,6 +56,7 @@ class MediaStoreFileWriterTest {
         override suspend fun setTheme(mode: ThemeMode) {}
         override suspend fun setDownloadLocation(location: DownloadLocation) {}
         override suspend fun setCustomDownloadFolder(uri: String?) {}
+        override suspend fun setWhatsappStatusFolder(uri: String?) {}
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setConcurrentDownloads(count: Int) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}

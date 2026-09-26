@@ -27,6 +27,7 @@ import com.narcictub.app.ui.theme.honeycomb
 import com.narcictub.app.ui.home.HomeScreen
 import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
+import com.narcictub.app.ui.status.StatusesScreen
 
 /**
  * Root app scaffold: bottom bar + NavHost with type-safe routes.
@@ -105,7 +106,12 @@ fun NarcicTubApp(
             composable<Destination.Playback> {
                 PlaybackScreen(onBack = { navController.popBackStack() })
             }
-            composable<Destination.Settings> { SettingsScreen() }
+            composable<Destination.Settings> {
+                SettingsScreen(onOpenStatuses = { navController.navigate(Destination.Statuses) })
+            }
+            composable<Destination.Statuses> {
+                StatusesScreen(onBack = { navController.popBackStack() })
+            }
         }
     }
 }

@@ -76,6 +76,7 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
+    onOpenStatuses: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -163,6 +164,58 @@ fun SettingsScreen(
                 }
             }
 
+            // ─── WHATSAPP STATUS ───
+            SettingsCard("WhatsApp Status") {
+                Column {
+                    val context = LocalContext.current
+                    val waFolder = state.whatsappStatusFolderUri
+                    val waGrant = waFolder?.let { uriText ->
+                        context.contentResolver.persistedUriPermissions.any {
+                            it.uri.toString() == uriText && (it.isReadPermission || it.isWritePermission)
+                        }
+                    } == true
+
+                    // پیکر پوشه استوری‌ها: grant خواندن برای فهرست‌کردن فایل‌ها
+                    val waPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                        if (uri != null) {
+                            runCatching {
+                                context.contentResolver.takePersistableUriPermission(
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                )
+                            }
+                            viewModel.onWhatsappFolderSelected(uri.toString())
+                        }
+                    }
+
+                    SettingRow(
+                        title = "Statuses folder",
+                        subtitle = when {
+                            waFolder == null -> "Not set — pick WhatsApp → Media → .Statuses once"
+                            waGrant -> folderDisplayName(waFolder) + "  ·  access granted"
+                            else -> "Access revoked — pick the folder again"
+                        },
+                        action = {
+                            OutlinedPill(text = if (waFolder == null || !waGrant) "Choose" else "Change") {
+                                // راهنمای مکان‌یابی: مستقیم به پوشه استوری‌های واتساپ
+                                val hint = DocumentsContract.buildDocumentUri(
+                                    "com.android.externalstorage.documents",
+                                    "primary:Android/media/com.whatsapp/WhatsApp/Media/.Statuses",
+                                )
+                                waPicker.launch(hint)
+                            }
+                        },
+                    )
+                    if (waFolder != null && waGrant) {
+                        SettingRow(
+                            title = "View statuses",
+                            subtitle = "Photos and videos currently in that folder",
+                            action = { OutlinedPill(text = "Open") { onOpenStatuses() } },
+                        )
+                    }
+                }
+            }
+
             Spacer(Modifier.height(16.dp))
         }
     }
@@ -244,6 +297,11 @@ private fun OutlinedPill(text: String, onClick: () -> Unit) {
  * Downloads collection ("Downloads/NarcicTub"); "Change" opens the SAF
  * folder picker and takes a persistable grant; "Default" clears an active
  * custom folder again (releasing the grant).
+ *
+ * PERMISSION STATE: the SAF grant is the permission that keeps the chosen
+ * location working across restarts. If the platform revoked it (app data
+ * cleared, folder removed), the row says so and offers "Re-grant" instead
+ * of pretending everything is fine.
  */
 @Composable
 private fun StorageLocationRow(
@@ -264,9 +322,22 @@ private fun StorageLocationRow(
         }
     }
 
+    // مجوز نوشتن روی پوشه انتخابی هنوز معتبر است؟
+    val hasGrant = customFolderUri?.let { uriText ->
+        context.contentResolver.persistedUriPermissions.any {
+            it.uri.toString() == uriText && it.isWritePermission
+        }
+    } == true
+
+    val subtitle = when {
+        customFolderUri == null -> "Downloads / Narcic Tube  ·  write access granted by the system picker"
+        hasGrant -> folderDisplayName(customFolderUri) + "  ·  write access granted"
+        else -> "Access revoked — re-grant to keep saving here"
+    }
+
     SettingRow(
         title = "Storage Location",
-        subtitle = customFolderUri?.let { folderDisplayName(it) } ?: "Downloads / NarcicTub",
+        subtitle = subtitle,
         action = {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (customFolderUri != null) {
@@ -283,7 +354,13 @@ private fun StorageLocationRow(
                         },
                     ) { Text("Default") }
                 }
-                OutlinedPill(text = "Change") { picker.launch(null) }
+                OutlinedPill(
+                    text = when {
+                        customFolderUri == null -> "Change"
+                        hasGrant -> "Change"
+                        else -> "Re-grant"
+                    },
+                ) { picker.launch(null) }
             }
         },
     )

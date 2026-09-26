@@ -7,6 +7,7 @@ import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
+import com.narcictub.app.domain.usecase.SetWhatsappStatusFolderUseCase
 import com.narcictub.app.domain.usecase.SetCustomDownloadFolderUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
@@ -33,6 +34,7 @@ data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val downloadLocation: DownloadLocation = DownloadLocation.DOWNLOADS,
     val customFolderUri: String? = null,
+    val whatsappStatusFolderUri: String? = null,
     val concurrentDownloads: Int = AppSettings.MIN_CONCURRENT_DOWNLOADS,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
@@ -44,6 +46,7 @@ class SettingsViewModel @Inject constructor(
     private val setThemeMode: SetThemeModeUseCase,
     private val setDownloadLocation: SetDownloadLocationUseCase,
     private val setCustomDownloadFolder: SetCustomDownloadFolderUseCase,
+    private val setWhatsappStatusFolder: SetWhatsappStatusFolderUseCase,
     private val setConcurrentDownloads: SetConcurrentDownloadsUseCase,
 ) : ViewModel() {
 
@@ -66,6 +69,7 @@ class SettingsViewModel @Inject constructor(
                 themeMode = settings.theme,
                 downloadLocation = settings.downloadLocation,
                 customFolderUri = settings.customDownloadFolderUri,
+                whatsappStatusFolderUri = settings.whatsappStatusFolderUri,
                 concurrentDownloads = settings.concurrentDownloads,
                 isLoading = false,
             )
@@ -98,6 +102,8 @@ class SettingsViewModel @Inject constructor(
      * is taken by the screen before this is called.
      */
     fun onCustomFolderSelected(uri: String?) = launchWrite { setCustomDownloadFolder(uri) }
+
+    fun onWhatsappFolderSelected(uri: String?) = launchWrite { setWhatsappStatusFolder(uri) }
 
     /** Out-of-range values are rejected by the use case — safe message only. */
     fun onConcurrentDownloadsSelected(count: Int) = launchWrite { setConcurrentDownloads(count) }

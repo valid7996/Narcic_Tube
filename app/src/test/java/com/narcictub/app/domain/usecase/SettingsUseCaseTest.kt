@@ -39,6 +39,9 @@ class SettingsUseCaseTest {
             if (fail) throw IOException("boom")
             folderWrites.add(uri)
         }
+        override suspend fun setWhatsappStatusFolder(uri: String?) {
+            if (fail) throw IOException("boom")
+        }
         override suspend fun setWifiOnly(enabled: Boolean) {
             if (fail) throw IOException("boom")
         }
