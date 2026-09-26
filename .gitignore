@@ -11,10 +11,12 @@ captures/
 .externalNativeBuild/
 .cxx/
 
-# Secrets — never commit (PHASE 16: signing material explicitly covered)
-keystore.properties
-*.jks
-*.keystore
+# SIGNING (deliberate change): the release keystore + passwords live in the
+# repo so CI can produce SIGNED GitHub Releases without secrets. The repo is
+# PRIVATE — anyone with write access could sign app updates, so never make
+# this repository public while this exception exists.
+# keystore.properties
+# *.jks
 *.p12
 *.pfx
 narcictub-release.keystore
