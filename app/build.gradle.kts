@@ -46,8 +46,8 @@ android {
         applicationId = "com.narcictub.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -89,17 +89,19 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            // PHASE 16: resource shrinking is safe here — the app performs no
-            // dynamic resource lookups (no getIdentifier usage, audited).
-            isShrinkResources = true
+            // Minify/Resource-shrink intentionally DISABLED (v1.1.1 fix):
+            // R8 broke the bundled youtubedl-android engine on release
+            // builds — init threw and every platform showed "download
+            // engine couldn't start" while debug worked. Release now builds
+            // exactly like debug (plus signing + ABI splits). The keep
+            // rules stay in proguard-rules.pro for a future re-attempt.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // PHASE 16: the env-injected signing config is attached when
-            // present; otherwise the release build stays UNSIGNED (default)
-            // — it is never silently debug-signed.
+            // امضای release از keystore.properties (داخل ریپو) اعمال می‌شود
             signingConfig = signingConfigs.findByName("release")
         }
     }
