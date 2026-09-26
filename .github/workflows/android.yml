@@ -117,10 +117,13 @@ jobs:
           # Tag pushes come from the trusted ref — caches may be saved.
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      # Honest secret handling: if any signing secret is missing, fail with
       # HONEY RELEASES: signing material lives in the (private) repo —
       # keystore.properties + keystore/*.jks — so no secrets setup is needed
       # here. This job publishes a real GitHub Release with per-ABI APKs.
+      - name: Make Gradle wrapper executable
+        # gradlew is committed without the executable bit (Windows checkout).
+        run: chmod +x gradlew
+
       - name: Build signed release APKs (per ABI + universal) and AAB
         run: ./gradlew assembleRelease bundleRelease
 
