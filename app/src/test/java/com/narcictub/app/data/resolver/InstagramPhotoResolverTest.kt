@@ -60,3 +60,39 @@ class InstagramPhotoResolverTest {
         assertTrue(og.imageUrl.startsWith("https://"))
     }
 }
+
+/*
+ * HONEY — fallback hardening: any Instagram extraction failure gets a photo
+ * attempt (login-walls included), the embed page is a second source, and
+ * canonical post URLs are extracted from arbitrary share links.
+ */
+class InstagramPhotoFallbackTest {
+
+    private val resolver = InstagramPhotoResolver(mockk(relaxed = true))
+
+    @Test
+    fun `canonical post url is extracted from share links`() {
+        assertEquals(
+            "https://www.instagram.com/p/CdeFg123/",
+            resolver.canonicalPostUrl("https://www.instagram.com/p/CdeFg123/?igsh=abc&utm=1"),
+        )
+        assertEquals(
+            "https://www.instagram.com/reel/Rxyz9_/",
+            resolver.canonicalPostUrl("https://www.instagram.com/reels/Rxyz9_/?igsh=abc"),
+        )
+        assertNull(resolver.canonicalPostUrl("https://www.instagram.com/username/"))
+    }
+
+    @Test
+    fun `embed page image is parsed`() {
+        val html = """<img class="EmbeddedMediaImage" src="https://scontent.cdninstagram.com/embed.jpg" />"""
+        val og = resolver.parseEmbedImage(html)
+        assertNotNull(og)
+        assertEquals("https://scontent.cdninstagram.com/embed.jpg", og!!.imageUrl)
+    }
+
+    @Test
+    fun `embed parse rejects non https`() {
+        assertNull(resolver.parseEmbedImage("""<img class="EmbeddedMediaImage" src="http://x/y.jpg">"""))
+    }
+}

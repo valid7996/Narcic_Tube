@@ -32,43 +32,71 @@ class InstagramPhotoResolver @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
 
+    /**
+     * Tries, in order:
+     *  1. the post page itself (og:image — works for public posts)
+     *  2. the /embed/captioned/ page (historically exposes the photo without
+     *     any login, as an EmbeddedMediaImage <img>)
+     * The first hit wins; total failure → null (original error surfaces).
+     */
     suspend fun resolvePhotoPost(pageUrl: String): MediaInfo? = withContext(Dispatchers.IO) {
-        runCatching {
-            val connection = URL(pageUrl).openConnection() as HttpsURLConnection
-            try {
-                connection.connectTimeout = TIMEOUT_MS
-                connection.readTimeout = TIMEOUT_MS
-                connection.instanceFollowRedirects = true
-                connection.setRequestProperty(
-                    "User-Agent",
-                    "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
-                        "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
-                )
-                instagramCookieHeader()?.let { connection.setRequestProperty("Cookie", it) }
+        val candidates = buildList {
+            add(pageUrl)
+            canonicalPostUrl(pageUrl)?.let { add(it + "embed/captioned/") }
+        }.distinct()
 
-                val html = connection.inputStream.bufferedReader().use { it.readText() }
-                val og = parseOgImage(html) ?: return@runCatching null
+        var result: MediaInfo? = null
+        for (url in candidates) {
+            if (result != null) break
+            result = runCatching {
+                fetchHtml(url)?.let { html ->
+                    (parseOgImage(html) ?: parseEmbedImage(html))?.let { buildMediaInfo(pageUrl, it) }
+                }
+            }.getOrNull()
+        }
+        result
+    }
 
-                MediaInfo(
-                    sourceUrl = pageUrl,
-                    title = og.title ?: "Instagram photo",
-                    host = "instagram.com",
-                    provider = MediaProvider.INSTAGRAM,
-                    mimeType = "image/jpeg",
-                    thumbnailUrl = og.imageUrl,
-                    isDirectFile = true,
-                    downloadUrl = og.imageUrl,
-                    variants = listOf(
-                        MediaVariant(
-                            downloadUrl = og.imageUrl,
-                            mimeType = "image/jpeg",
-                        ),
-                    ),
-                )
-            } finally {
-                connection.disconnect()
-            }
-        }.getOrNull()
+    private fun fetchHtml(url: String): String? {
+        val connection = URL(url).openConnection() as HttpsURLConnection
+        try {
+            connection.connectTimeout = TIMEOUT_MS
+            connection.readTimeout = TIMEOUT_MS
+            connection.instanceFollowRedirects = true
+            connection.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+            )
+            instagramCookieHeader()?.let { connection.setRequestProperty("Cookie", it) }
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun buildMediaInfo(pageUrl: String, og: OgMedia): MediaInfo = MediaInfo(
+        sourceUrl = pageUrl,
+        title = og.title ?: "Instagram photo",
+        host = "instagram.com",
+        provider = MediaProvider.INSTAGRAM,
+        mimeType = "image/jpeg",
+        thumbnailUrl = og.imageUrl,
+        isDirectFile = true,
+        downloadUrl = og.imageUrl,
+        variants = listOf(
+            MediaVariant(
+                downloadUrl = og.imageUrl,
+                mimeType = "image/jpeg",
+            ),
+        ),
+    )
+
+    /** کد پست را از هر شکلی از لینک اینستاگرام بیرون می‌کشد. */
+    internal fun canonicalPostUrl(pageUrl: String): String? {
+        val match = Regex("""instagram\.com/(p|reel|reels|tv)/([A-Za-z0-9_-]+)""").find(pageUrl) ?: return null
+        val type = if (match.groupValues[1] == "p") "p" else "reel"
+        return "https://www.instagram.com/$type/${match.groupValues[2]}/"
     }
 
     internal data class OgMedia(val imageUrl: String, val title: String?)
@@ -95,6 +123,17 @@ class InstagramPhotoResolver @Inject constructor(
             RegexOption.IGNORE_CASE,
         ).find(html)?.groupValues?.get(1)?.let(::decodeEntities)?.takeIf { it.isNotBlank() }
         return OgMedia(imageUrl, title)
+    }
+
+    /** صفحه embed اینستاگرام عکس را در <img class="EmbeddedMediaImage"> دارد. */
+    internal fun parseEmbedImage(html: String): OgMedia? {
+        val raw = Regex(
+            """EmbeddedMediaImage[^>]*src=["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE,
+        ).find(html)?.groupValues?.get(1) ?: return null
+        val imageUrl = decodeEntities(raw)
+        if (!imageUrl.startsWith("https://")) return null
+        return OgMedia(imageUrl, null)
     }
 
     private fun decodeEntities(value: String): String = value

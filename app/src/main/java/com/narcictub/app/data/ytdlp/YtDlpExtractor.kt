@@ -40,12 +40,12 @@ class YtDlpExtractor @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: MediaResolveException) {
-            // Instagram PHOTO posts: yt-dlp finds no video stream in them
-            // (NO_MEDIA) — the og:image fallback resolves the real photo.
-            val noMediaPhotoCandidate = e is MediaResolveException.ExtractionFailed &&
-                e.provider == MediaProvider.INSTAGRAM &&
-                e.reason == MediaResolveException.ExtractionFailed.Reason.NO_MEDIA
-            if (noMediaPhotoCandidate) {
+            // Instagram PHOTO posts: yt-dlp demands a login for them (it sees
+            // no video stream) — so ANY Instagram extraction failure gets an
+            // og:image photo attempt before giving up. If the page exposes
+            // the photo, it resolves; otherwise the original typed error
+            // surfaces unchanged.
+            if (provider == MediaProvider.INSTAGRAM) {
                 val photo = instagramPhotoResolver.resolvePhotoPost(pageUrl)
                 if (photo != null) return Result.success(photo)
             }
