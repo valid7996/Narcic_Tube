@@ -80,6 +80,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showInstagramLogin by remember { mutableStateOf(false) }
+    var cookiesEpoch by remember { mutableStateOf(0) }
 
     Scaffold(
         modifier = modifier,
@@ -160,7 +162,7 @@ fun SettingsScreen(
                         onSelect = viewModel::onConcurrentDownloadsSelected,
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    CookiesRow()
+                    CookiesRow(epoch = cookiesEpoch, onShowLogin = { showInstagramLogin = true })
                 }
             }
 
@@ -218,6 +220,13 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(16.dp))
         }
+    }
+
+    if (showInstagramLogin) {
+        InstagramLoginDialog(
+            onSessionSaved = { ok -> cookiesEpoch++ },
+            onDismiss = { showInstagramLogin = false },
+        )
     }
 }
 
@@ -416,11 +425,11 @@ private fun ConcurrentDownloadsRow(
  * do the same. The file stays in app-private storage and is never backed up.
  */
 @Composable
-private fun CookiesRow() {
+private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var hasCookies by remember { mutableStateOf(YtDlpCookies.exists(context)) }
-    var status by remember { mutableStateOf<String?>(null) }
+    var hasCookies by remember(epoch) { mutableStateOf(YtDlpCookies.exists(context)) }
+    var status by remember(epoch) { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -441,15 +450,18 @@ private fun CookiesRow() {
             title = "YouTube & IG Cookies",
             subtitle = if (hasCookies) "cookies.txt imported" else "None imported",
             action = {
-                OutlinedPill(
-                    text = if (hasCookies) "Remove" else "Import",
-                ) {
-                    if (hasCookies) {
-                        YtDlpCookies.clear(context)
-                        hasCookies = false
-                        status = "Cookies removed."
-                    } else {
-                        picker.launch(arrayOf("*/*"))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedPill(text = "Log in") { onShowLogin() }
+                    OutlinedPill(
+                        text = if (hasCookies) "Remove" else "Import",
+                    ) {
+                        if (hasCookies) {
+                            YtDlpCookies.clear(context)
+                            hasCookies = false
+                            status = "Cookies removed."
+                        } else {
+                            picker.launch(arrayOf("*/*"))
+                        }
                     }
                 }
             },

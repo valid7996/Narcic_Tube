@@ -63,4 +63,32 @@ object YtDlpCookies {
     internal fun looksLikeNetscapeCookies(text: String): Boolean =
         text.contains("Netscape HTTP Cookie File") ||
             text.lineSequence().any { line -> line.count { it == '\t' } >= 6 }
+
+    /**
+     * HONEY: ذخیره سشن لاگین داخل اپ — کوکی‌های WebView اینستاگرام به
+     * فرمت Netscape تبدیل و در همان فایلی که yt-dlp و photo resolver
+     * می‌خوانند ذخیره می‌شود. هیچ محتوایی لاگ نمی‌شود.
+     */
+    fun saveInstagramSession(context: Context, cookieHeader: String): Boolean {
+        return try {
+            val expiry = (System.currentTimeMillis() / 1000) + 365L * 24 * 60 * 60
+            val lines = cookieHeader.split("; ").mapNotNull { pair ->
+                val idx = pair.indexOf('=')
+                if (idx <= 0) return@mapNotNull null
+                val name = pair.substring(0, idx).trim()
+                val value = pair.substring(idx + 1).trim()
+                if (name.isEmpty() || value.isEmpty()) return@mapNotNull null
+                ".instagram.com\tTRUE\t/\tTRUE\t$expiry\t$name\t$value"
+            }
+            if (lines.isEmpty()) return false
+            val target = file(context)
+            target.parentFile?.mkdirs()
+            target.writeText(
+                "# Netscape HTTP Cookie File\n" + lines.joinToString("\n") + "\n",
+            )
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
 }
