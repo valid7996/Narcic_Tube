@@ -1,15 +1,29 @@
 package com.narcictub.app.ui.downloads
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -18,11 +32,11 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.Downloading
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.HourglassTop
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -32,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -43,16 +58,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.DownloadProgress
 import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.domain.model.DownloadsOverview
 import com.narcictub.app.domain.model.HistoryItem
+import com.narcictub.app.ui.theme.BeeFlightOverlay
+import com.narcictub.app.ui.theme.BeeIcon
+import com.narcictub.app.ui.theme.HexGauge
+import com.narcictub.app.ui.theme.HexPointyShape
+import com.narcictub.app.ui.theme.Hexagon
+import com.narcictub.app.ui.theme.HiveTabShape
+import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.InkOnHoney
 import com.narcictub.app.ui.theme.NarcicTubTheme
+import com.narcictub.app.ui.theme.StripedHoneyBar
+import com.narcictub.app.ui.theme.honeycomb
 import java.time.Instant
 
 /**
@@ -68,6 +99,7 @@ import java.time.Instant
 @Composable
 fun DownloadsScreen(
     modifier: Modifier = Modifier,
+    onPlayMedia: (Long) -> Unit,
     viewModel: DownloadsViewModel = hiltViewModel(),
 ) {
     val overview by viewModel.overview.collectAsStateWithLifecycle()
@@ -77,13 +109,13 @@ fun DownloadsScreen(
         overview = overview,
         transient = transient,
         onCancel = viewModel::onCancel,
-        onPause = viewModel::onPause,
-        onResume = viewModel::onResume,
         onRetry = viewModel::onRetry,
         onRemove = viewModel::onRemove,
+        onRemoveRecordOnly = viewModel::onRemoveRecordOnly,
         onClearFinished = viewModel::onRemoveCompletedConfirmed,
         onClearFailed = viewModel::onRemoveFailedConfirmed,
         onMessageShown = viewModel::onMessageShown,
+        onPlayMedia = onPlayMedia,
         modifier = modifier,
     )
 }
@@ -94,13 +126,13 @@ fun DownloadsScreenContent(
     overview: DownloadsOverview,
     transient: DownloadsTransientUiState,
     onCancel: (Long) -> Unit,
-    onPause: (Long) -> Unit,
-    onResume: (Long) -> Unit,
     onRetry: (Long) -> Unit,
     onRemove: (Long) -> Unit,
+    onRemoveRecordOnly: (Long) -> Unit,
     onClearFinished: () -> Unit,
     onClearFailed: () -> Unit,
     onMessageShown: () -> Unit,
+    onPlayMedia: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val state = remember(overview) { overview.toUiState() }
@@ -120,6 +152,23 @@ fun DownloadsScreenContent(
 
     /** Row pending destructive-removal confirmation (COMPLETED only). */
     var confirmRemoveId by remember { mutableStateOf<Long?>(null) }
+
+    // ─── Signature completion moment: a bee crosses the screen whenever a
+    // download lands COMPLETED. Diff completed ids against the previous
+    // snapshot; the first snapshot (null baseline) never fires.
+    var beeFlightKey by remember { mutableStateOf(0) }
+    var seenCompletedIds by remember { mutableStateOf<Set<Long>?>(null) }
+    val completedIds = remember(overview) {
+        overview.items.filter { it.status == DownloadStatus.COMPLETED }.map { it.id }.toSet()
+    }
+    LaunchedEffect(completedIds) {
+        val seen = seenCompletedIds
+        if (seen != null) {
+            val fresh = completedIds - seen
+            if (fresh.isNotEmpty()) beeFlightKey += fresh.size
+        }
+        seenCompletedIds = completedIds
+    }
 
     Scaffold(
         modifier = modifier,
@@ -144,65 +193,72 @@ fun DownloadsScreenContent(
         } else if (state.isEmpty) {
             EmptyState(Modifier.padding(padding).fillMaxSize())
         } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (state.active.isNotEmpty()) {
-                    sectionHeader("Active")
-                    items(state.active, key = { "active-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel, onPause = onPause, onResume = onResume)
+            Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (state.active.isNotEmpty() || state.queue.isNotEmpty() || state.finished.isNotEmpty()) {
+                        item(key = "hive-stats") { HiveStatsRow(state) }
                     }
-                }
-                if (state.queue.isNotEmpty()) {
-                    sectionHeader("Queued")
-                    items(state.queue, key = { "queue-${it.id}" }) { row ->
-                        ActiveDownloadCard(row = row, onCancel = onCancel, onPause = onPause, onResume = onResume)
-                    }
-                }
-                if (state.finished.isNotEmpty()) {
-                    // Fix 1: "Clear failed" lives IN the finished section and
-                    // is offered exactly while failed/cancelled records exist
-                    // — it opens the existing confirmation dialog below.
-                    item(key = "header-Finished") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = "Finished",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.weight(1f),
+                    if (state.active.isNotEmpty() || state.queue.isNotEmpty()) {
+                        item(key = "hive-folder") {
+                            HiveFolder(
+                                rows = state.active + state.queue,
+                                onCancel = onCancel,
                             )
-                            if (state.hasFailed) {
-                                TextButton(
-                                    onClick = { confirmClearFailed = true },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                ) { Text("Clear failed") }
-                            }
                         }
                     }
-                    items(state.finished, key = { "finished-${it.id}" }) { row ->
-                        FinishedDownloadCard(
-                            row = row,
-                            onRetry = onRetry,
-                            // Fix 2: only COMPLETED removals (which delete the
-                            // published file) require confirmation; failed and
-                            // cancelled rows hold no file and remove immediately.
-                            onRemoveRequest = { target ->
-                                if (requiresRemovalConfirmation(target.status)) {
-                                    confirmRemoveId = target.id
+                    if (state.finished.isNotEmpty()) {
+                        // History header: hexagon bullet + count + inline
+                        // "Clear failed" exactly while failed records exist.
+                        item(key = "header-History") {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Hexagon(size = 12.dp, fill = HoneyGradient)
+                                Text(
+                                    text = "  HISTORY",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 4.dp),
+                                )
+                                SurfacePill(historyCount(state))
+                                if (state.hasFailed) {
+                                    Spacer(Modifier.weight(1f))
+                                    TextButton(
+                                        onClick = { confirmClearFailed = true },
+                                        contentPadding = PaddingValues(horizontal = 8.dp),
+                                    ) { Text("Clear failed") }
                                 } else {
-                                    onRemove(target.id)
+                                    Spacer(Modifier.weight(1f))
                                 }
-                            },
-                        )
+                            }
+                        }
+                        items(state.finished, key = { "dl-${it.id}" }) { row ->
+                            FinishedDownloadCard(
+                                row = row,
+                                onRetry = onRetry,
+                                onPlay = onPlayMedia,
+                                // Fix 2: only COMPLETED removals (which delete
+                                // the published file) require confirmation;
+                                // failed and cancelled rows hold no file and
+                                // remove immediately.
+                                onRemoveRequest = { target ->
+                                    if (requiresRemovalConfirmation(target.status)) {
+                                        confirmRemoveId = target.id
+                                    } else {
+                                        onRemove(target.id)
+                                    }
+                                },
+                            )
+                        }
                     }
                 }
+                // زنبور پروازی روی اتمام دانلود — بالای همه‌چیز
+                BeeFlightOverlay(flightKey = beeFlightKey)
             }
         }
     }
@@ -245,26 +301,37 @@ fun DownloadsScreenContent(
     }
 
     // Fix 2: destructive per-row removal — COMPLETED rows delete a published
-    // file, so they confirm first. Failed/cancelled rows never reach this
-    // dialog (no file exists for them). No paths or URIs are shown.
+    // file, so they confirm first and the user chooses between "remove from
+    // history" (file stays) and "delete the file too". Failed/cancelled
+    // rows never reach this dialog (no file exists for them). No paths or
+    // URIs are shown.
     if (confirmRemoveId != null) {
         AlertDialog(
             onDismissRequest = { confirmRemoveId = null },
-            title = { Text("Remove download and delete its file?") },
+            title = { Text("Remove from history?") },
             text = {
                 Text(
-                    "This removes the download from your list and permanently " +
-                        "deletes its downloaded file. This can't be undone.",
+                    "Keep the file and remove just the record, or delete the " +
+                        "downloaded file as well. This can't be undone.",
                 )
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val targetId = confirmRemoveId
-                        confirmRemoveId = null
-                        if (targetId != null) onRemove(targetId)
-                    },
-                ) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+                Row {
+                    TextButton(
+                        onClick = {
+                            val targetId = confirmRemoveId
+                            confirmRemoveId = null
+                            if (targetId != null) onRemoveRecordOnly(targetId)
+                        },
+                    ) { Text("Keep file") }
+                    TextButton(
+                        onClick = {
+                            val targetId = confirmRemoveId
+                            confirmRemoveId = null
+                            if (targetId != null) onRemove(targetId)
+                        },
+                    ) { Text("Delete file", color = MaterialTheme.colorScheme.error) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { confirmRemoveId = null }) { Text("Cancel") }
@@ -286,17 +353,20 @@ private fun LazyListScope.sectionHeader(title: String) {
     }
 }
 
-/** Active (downloading/paused) or queued row: title, host, live progress, pause/resume/cancel. */
+/** Active (downloading/paused) or queued row: title, host, live progress, cancel. */
 @Composable
 private fun ActiveDownloadCard(
     row: UiDownload,
     onCancel: (Long) -> Unit,
-    onPause: (Long) -> Unit,
-    onResume: (Long) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Row(
@@ -304,13 +374,17 @@ private fun ActiveDownloadCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusIcon(status = row.status)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = row.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = row.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        StatusBadge(status = row.status, modifier = Modifier.padding(start = 8.dp))
+                    }
                     HostLine(host = row.host)
                     StatusLine(
                         status = row.status,
@@ -319,41 +393,137 @@ private fun ActiveDownloadCard(
                         bytes = row.completedBytes,
                     )
                 }
-                if (offersPauseAction(row.status)) {
-                    IconButton(onClick = { onPause(row.id) }) {
-                        Icon(Icons.Filled.Pause, contentDescription = "Pause download")
-                    }
-                }
-                if (offersResumeAction(row.status)) {
-                    IconButton(onClick = { onResume(row.id) }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = "Resume download")
-                    }
-                }
+                HexGauge(
+                    progress = row.progress?.fraction,
+                    modifier = Modifier.padding(start = 8.dp),
+                )
                 if (offersCancelAction(row.status)) {
                     IconButton(onClick = { onCancel(row.id) }) {
                         Icon(Icons.Filled.Close, contentDescription = "Cancel download")
                     }
                 }
             }
-            // A paused row keeps showing its last-known progress (the
-            // repository deliberately doesn't clear it — see
-            // DownloadRepositoryImpl.pause) so the bar doesn't jump to
-            // empty and back; it's just frozen instead of animating.
             if (row.status == DownloadStatus.DOWNLOADING || row.status == DownloadStatus.PAUSED) {
-                val fraction = row.progress?.fraction
-                if (fraction != null) {
-                    // Known Content-Length: real determinate progress.
-                    LinearProgressIndicator(
-                        progress = { fraction },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else if (row.status == DownloadStatus.DOWNLOADING) {
-                    // Unknown Content-Length: honest indeterminate bar —
-                    // never an invented percentage. Not shown while paused:
-                    // an indeterminate spinner would imply activity there
-                    // isn't any right now.
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
+                // Real byte fraction when Content-Length is known; an honest
+                // indeterminate stripe when it isn't — never an invented %.
+                StripedHoneyBar(
+                    fraction = row.progress?.fraction,
+                    running = row.status == DownloadStatus.DOWNLOADING,
+                    paused = row.status == DownloadStatus.PAUSED,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * HIVE stats — three interlocked hexagons (the middle one honey-filled and
+ * layered above): in hive (active + queued) · running (transferring) ·
+ * saved (completed records). All live, all real counts.
+ */
+@Composable
+private fun HiveStatsRow(state: DownloadsUiState) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        StatHex(
+            value = (state.active.size + state.queue.size).toString(),
+            label = "in hive",
+            filled = false,
+        )
+        StatHex(
+            value = state.active.size.toString(),
+            label = "running",
+            filled = true,
+            modifier = Modifier
+                .offset(x = (-18).dp)
+                .zIndex(1f),
+        )
+        StatHex(
+            value = state.finished.count { it.status == DownloadStatus.COMPLETED }.toString(),
+            label = "saved",
+            filled = false,
+            modifier = Modifier.offset(x = (-36).dp),
+        )
+    }
+}
+
+@Composable
+private fun StatHex(value: String, label: String, filled: Boolean, modifier: Modifier = Modifier) {
+    Hexagon(
+        size = 88.dp,
+        fill = if (filled) HoneyGradient else null,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.then(
+            if (filled) Modifier else Modifier.border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, HexPointyShape),
+        ),
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = if (filled) InkOnHoney else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (filled) InkOnHoney.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The HIVE folder: a bordered card with the honeycomb texture inside and an
+ * overhanging honey tab (bee + "In progress" + count pill) holding every
+ * active and queued download.
+ */
+@Composable
+private fun HiveFolder(rows: List<UiDownload>, onCancel: (Long) -> Unit) {
+    Box(Modifier.fillMaxWidth()) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 14.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(16.dp))
+                .honeycomb(MaterialTheme.colorScheme.primary, alpha = 0.08f, tile = 56.dp)
+                .padding(top = 26.dp, start = 10.dp, end = 10.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            rows.forEach { row -> ActiveDownloadCard(row = row, onCancel = onCancel) }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(y = (-14).dp)
+                .clip(HiveTabShape)
+                .background(HoneyGradient)
+                .padding(start = 12.dp, end = 24.dp, top = 7.dp, bottom = 7.dp),
+        ) {
+            val flap by rememberInfiniteTransition(label = "hiveBee").animateFloat(
+                -18f, 18f, infiniteRepeatable(tween(120), RepeatMode.Reverse), label = "flap",
+            )
+            BeeIcon(modifier = Modifier.size(26.dp), flapAngle = flap)
+            Text(
+                text = " In progress",
+                style = MaterialTheme.typography.labelMedium,
+                color = InkOnHoney,
+            )
+            Box(
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .clip(CircleShape)
+                    .background(InkOnHoney.copy(alpha = 0.20f))
+                    .padding(horizontal = 7.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    text = rows.size.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = InkOnHoney,
+                )
             }
         }
     }
@@ -364,21 +534,31 @@ private fun ActiveDownloadCard(
 private fun FinishedDownloadCard(
     row: UiDownload,
     onRetry: (Long) -> Unit,
+    onPlay: (Long) -> Unit,
     onRemoveRequest: (UiDownload) -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ),
+    ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             StatusIcon(status = row.status)
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = row.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = row.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    StatusBadge(status = row.status, modifier = Modifier.padding(start = 8.dp))
+                }
                 HostLine(host = row.host)
                 StatusLine(
                     status = row.status,
@@ -390,6 +570,13 @@ private fun FinishedDownloadCard(
                 // that actually completed.
                 if (row.status == DownloadStatus.COMPLETED) {
                     row.completedAtEpochMs?.let { CompletedLine(it) }
+                }
+            }
+            // Completed rows open in the in-app player (Playback resolves
+            // availability itself and degrades to a safe unavailable state).
+            if (row.status == DownloadStatus.COMPLETED) {
+                IconButton(onClick = { onPlay(row.id) }) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Open media")
                 }
             }
             if (offersRetryAction(row.status)) {
@@ -415,38 +602,109 @@ private fun FinishedDownloadCard(
     }
 }
 
+private fun historyCount(state: DownloadsUiState): String = state.finished.size.toString()
+
+@Composable
+private fun SurfacePill(text: String) {
+    Box(
+        Modifier
+            .padding(start = 8.dp)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+            .padding(horizontal = 8.dp, vertical = 1.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Tinted circular icon well — the quiet visual anchor of every row. */
 @Composable
 private fun StatusIcon(status: DownloadStatus) {
-    when (status) {
-        DownloadStatus.QUEUED -> Icon(
-            Icons.Filled.HourglassTop,
-            contentDescription = "Queued",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+    val (vector, tint) = statusIconFor(status)
+    Box(
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(tint.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = vector,
+            contentDescription = statusAccessibilityLabel(status),
+            tint = tint,
+            modifier = Modifier.size(22.dp),
         )
-        DownloadStatus.DOWNLOADING -> Icon(
-            Icons.Filled.Downloading,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+    }
+}
+
+@Composable
+private fun statusIconFor(status: DownloadStatus): Pair<ImageVector, Color> = when (status) {
+    DownloadStatus.QUEUED -> Icons.Filled.HourglassTop to MaterialTheme.colorScheme.onSurfaceVariant
+    DownloadStatus.DOWNLOADING -> Icons.Filled.Downloading to MaterialTheme.colorScheme.primary
+    DownloadStatus.PAUSED -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
+    DownloadStatus.COMPLETED -> Icons.Filled.DownloadDone to MaterialTheme.colorScheme.primary
+    DownloadStatus.FAILED -> Icons.Filled.ErrorOutline to MaterialTheme.colorScheme.error
+    DownloadStatus.CANCELLED -> Icons.Filled.Close to MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+private fun statusAccessibilityLabel(status: DownloadStatus): String = when (status) {
+    DownloadStatus.QUEUED -> "Queued"
+    DownloadStatus.DOWNLOADING -> "Downloading"
+    DownloadStatus.PAUSED -> "Paused"
+    DownloadStatus.COMPLETED -> "Completed"
+    DownloadStatus.FAILED -> "Failed"
+    DownloadStatus.CANCELLED -> "Cancelled"
+}
+
+/** Small colored status pill next to the row title. */
+@Composable
+private fun StatusBadge(status: DownloadStatus, modifier: Modifier = Modifier) {
+    val (label, container, content) = when (status) {
+        DownloadStatus.QUEUED -> Triple(
+            "Queued",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
         )
-        DownloadStatus.PAUSED -> Icon(
-            Icons.Filled.Close,
-            contentDescription = "Paused",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        DownloadStatus.DOWNLOADING -> Triple(
+            "Downloading",
+            MaterialTheme.colorScheme.primaryContainer,
+            MaterialTheme.colorScheme.onPrimaryContainer,
         )
-        DownloadStatus.COMPLETED -> Icon(
-            Icons.Filled.DownloadDone,
-            contentDescription = "Completed",
-            tint = MaterialTheme.colorScheme.primary,
+        DownloadStatus.PAUSED -> Triple(
+            "Paused",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
         )
-        DownloadStatus.FAILED -> Icon(
-            Icons.Filled.ErrorOutline,
-            contentDescription = "Failed",
-            tint = MaterialTheme.colorScheme.error,
+        DownloadStatus.COMPLETED -> Triple(
+            "Done",
+            MaterialTheme.colorScheme.tertiaryContainer,
+            MaterialTheme.colorScheme.onTertiaryContainer,
         )
-        DownloadStatus.CANCELLED -> Icon(
-            Icons.Filled.Close,
-            contentDescription = "Cancelled",
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        DownloadStatus.FAILED -> Triple(
+            "Failed",
+            MaterialTheme.colorScheme.errorContainer,
+            MaterialTheme.colorScheme.onErrorContainer,
+        )
+        DownloadStatus.CANCELLED -> Triple(
+            "Cancelled",
+            MaterialTheme.colorScheme.secondaryContainer,
+            MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+    }
+    Surface(
+        shape = MaterialTheme.shapes.extraSmall,
+        color = container,
+        modifier = modifier,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = content,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
         )
     }
 }
@@ -499,15 +757,31 @@ private fun EmptyState(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Downloading,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(40.dp),
+            )
+        }
         Text(
             text = "No downloads yet",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(top = 20.dp),
         )
         Text(
-            text = "Queue a link from the Home tab",
+            text = "Share a link into NarcicTub or paste one on the Home tab.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 6.dp, start = 32.dp, end = 32.dp),
         )
     }
 }
@@ -567,7 +841,7 @@ private fun DownloadsEmptyPreview() {
             // Genuinely empty (a snapshot arrived with zero rows).
             overview = DownloadsOverview(isLoading = false),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -581,7 +855,7 @@ private fun DownloadsLoadingPreview() {
             // No snapshot yet — loading, not empty.
             overview = DownloadsOverview(),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }
@@ -632,7 +906,7 @@ private fun DownloadsActivePreview() {
                 ),
             ),
             transient = DownloadsTransientUiState(),
-            onCancel = {}, onPause = {}, onResume = {}, onRetry = {}, onRemove = {},
+            onCancel = {}, onRetry = {}, onRemove = {}, onRemoveRecordOnly = {}, onPlayMedia = {},
             onClearFinished = {}, onClearFailed = {}, onMessageShown = {},
         )
     }

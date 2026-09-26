@@ -35,17 +35,6 @@ class EnqueueDownloadUseCaseTest {
             )
         }
 
-        val titledMimeTypes = mutableListOf<String?>()
-        override suspend fun enqueueTitled(
-            sourceUrl: String,
-            durationSeconds: Long?,
-            title: String?,
-            mimeType: String?,
-        ): Long {
-            titledMimeTypes.add(mimeType)
-            return enqueue(sourceUrl, durationSeconds)
-        }
-
         override suspend fun cancel(id: Long) {}
         override suspend fun retry(id: Long): Long? = null
         override suspend fun remove(id: Long): Boolean = false
@@ -80,29 +69,6 @@ class EnqueueDownloadUseCaseTest {
         override suspend fun updateLocalUri(id: Long, localUri: String) {}
         override suspend fun updateSizeBytes(id: Long, sizeBytes: Long) {}
         override suspend fun updateMimeType(id: Long, mimeType: String?) {}
-    }
-
-    @Test
-    fun `a resolved mime type is threaded through to enqueueTitled`() = runTest {
-        val history = FakeHistoryRepository()
-        val repo = FakeDownloadRepository(history)
-        val useCase = EnqueueDownloadUseCase(repo)
-
-        useCase("https://example.com/clip.mp4", mimeType = "video/mp4; codecs=avc1")
-
-        assertEquals(listOf("video/mp4; codecs=avc1"), repo.titledMimeTypes)
-    }
-
-    @Test
-    fun `no mime type keeps the plain enqueue path`() = runTest {
-        val history = FakeHistoryRepository()
-        val repo = FakeDownloadRepository(history)
-        val useCase = EnqueueDownloadUseCase(repo)
-
-        useCase("https://example.com/clip.mp4")
-
-        assertTrue(repo.titledMimeTypes.isEmpty())
-        assertEquals(listOf("https://example.com/clip.mp4"), repo.enqueued)
     }
 
     @Test

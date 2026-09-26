@@ -1,76 +1,87 @@
 package com.narcictub.app.ui.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.data.ytdlp.YtDlpCookies
-import com.narcictub.app.overlay.ClipboardWatcherService
-import com.narcictub.app.overlay.OverlayPermission
 import com.narcictub.app.domain.model.AppSettings
-import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
+import com.narcictub.app.ui.theme.Hexagon
+import com.narcictub.app.ui.theme.HoneyGradient
+import com.narcictub.app.ui.theme.honeyAccentTextColor
+import com.narcictub.app.ui.theme.honeycomb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * PHASE 13 — Settings: Appearance (theme), Downloads (location + concurrent
- * limit). Values come from the DataStore-backed repository through use
- * cases and persist across restarts; the theme selection drives the REAL
- * app theme. Loading and error states are safe — no crashes, no raw
- * exceptions. Only settings with real consumers are shown; the model's
- * wifi-only/notifications fields are intentionally not exposed here.
+ * PHASE 13 — Settings, honey-styled: two grouped cards ("Appearance &
+ * Theme", "Download Settings") with compact title/subtitle/action rows.
+ * Values come from the DataStore-backed repository through use cases and
+ * persist across restarts; the theme selection drives the REAL app theme.
+ * Loading and error states are safe — no crashes, no raw exceptions.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
+    onOpenStatuses: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    var showInstagramLogin by remember { mutableStateOf(false) }
+    var cookiesEpoch by remember { mutableStateOf(0) }
 
     Scaffold(
         modifier = modifier,
@@ -95,144 +106,315 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .honeycomb(MaterialTheme.colorScheme.primary, alpha = 0.05f, tile = 72.dp)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             state.errorMessage?.let { message ->
                 SettingsErrorBanner(message)
             }
 
-            SectionHeader("Appearance")
-            ThemeSection(
-                selected = state.themeMode,
-                onSelect = viewModel::onThemeModeSelected,
-            )
+            // ─── APPEARANCE & THEME ───
+            SettingsCard("Appearance & Theme") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Color Theme",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "Warm honey palette",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    SingleChoiceSegmentedButtonRow(Modifier.width(200.dp)) {
+                        val modes = ThemeMode.entries
+                        modes.forEachIndexed { index, mode ->
+                            SegmentedButton(
+                                selected = state.themeMode == mode,
+                                onClick = { viewModel.onThemeModeSelected(mode) },
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
+                                label = { Text(themeLabel(mode)) },
+                            )
+                        }
+                    }
+                }
+            }
 
-            SectionHeader("Downloads")
-            DownloadLocationSection(
-                selected = state.downloadLocation,
-                onSelect = viewModel::onDownloadLocationSelected,
-            )
-            ConcurrentDownloadsSection(
-                value = state.concurrentDownloads,
-                onSelect = viewModel::onConcurrentDownloadsSelected,
-            )
+            // ─── DOWNLOAD SETTINGS ───
+            SettingsCard("Download Settings") {
+                Column {
+                    StorageLocationRow(
+                        customFolderUri = state.customFolderUri,
+                        onFolderPicked = viewModel::onCustomFolderSelected,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    ConcurrentDownloadsRow(
+                        value = state.concurrentDownloads,
+                        onSelect = viewModel::onConcurrentDownloadsSelected,
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    CookiesRow(epoch = cookiesEpoch, onShowLogin = { showInstagramLogin = true })
+                }
+            }
 
-            SectionHeader("YouTube & Instagram login (optional)")
-            LoginCookiesSection()
+            // ─── WHATSAPP STATUS ───
+            SettingsCard("WhatsApp Status") {
+                Column {
+                    val context = LocalContext.current
+                    val waFolder = state.whatsappStatusFolderUri
+                    val waGrant = waFolder?.let { uriText ->
+                        context.contentResolver.persistedUriPermissions.any {
+                            it.uri.toString() == uriText && (it.isReadPermission || it.isWritePermission)
+                        }
+                    } == true
 
-            SectionHeader("Floating download bubble")
-            ClipboardWatcherSection(
-                enabled = state.clipboardWatcherEnabled,
-                onToggle = viewModel::onClipboardWatcherToggled,
-            )
+                    // پیکر پوشه استوری‌ها: grant خواندن برای فهرست‌کردن فایل‌ها
+                    val waPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+                        if (uri != null) {
+                            runCatching {
+                                context.contentResolver.takePersistableUriPermission(
+                                    uri,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                                )
+                            }
+                            viewModel.onWhatsappFolderSelected(uri.toString())
+                        }
+                    }
+
+                    SettingRow(
+                        title = "Statuses folder",
+                        subtitle = when {
+                            waFolder == null -> "Not set — pick WhatsApp → Media → .Statuses once"
+                            waGrant -> folderDisplayName(waFolder) + "  ·  access granted"
+                            else -> "Access revoked — pick the folder again"
+                        },
+                        action = {
+                            OutlinedPill(text = if (waFolder == null || !waGrant) "Choose" else "Change") {
+                                // راهنمای مکان‌یابی: مستقیم به پوشه استوری‌های واتساپ
+                                val hint = DocumentsContract.buildDocumentUri(
+                                    "com.android.externalstorage.documents",
+                                    "primary:Android/media/com.whatsapp/WhatsApp/Media/.Statuses",
+                                )
+                                waPicker.launch(hint)
+                            }
+                        },
+                    )
+                    if (waFolder != null && waGrant) {
+                        SettingRow(
+                            title = "View statuses",
+                            subtitle = "Photos and videos currently in that folder",
+                            action = { OutlinedPill(text = "Open") { onOpenStatuses() } },
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.height(16.dp))
         }
     }
-}
 
-@Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-    )
-}
-
-/** Theme: three mutually exclusive modes in a segmented row. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ThemeSection(
-    selected: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
-) {
-    Text(
-        text = "Theme",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        val modes = ThemeMode.entries
-        modes.forEachIndexed { index, mode ->
-            SegmentedButton(
-                selected = selected == mode,
-                onClick = { onSelect(mode) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = modes.size),
-                label = { Text(themeLabel(mode)) },
-            )
-        }
+    if (showInstagramLogin) {
+        InstagramLoginDialog(
+            onSessionSaved = { ok -> cookiesEpoch++ },
+            onDismiss = { showInstagramLogin = false },
+        )
     }
-    Text(
-        text = "Applied immediately across the app.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 8.dp),
-    )
 }
 
-/** Download location: real persisted enum, shown as a radio group. */
+/** Grouped honey card: hexagon-bullet header INSIDE the card, content below. */
 @Composable
-private fun DownloadLocationSection(
-    selected: DownloadLocation,
-    onSelect: (DownloadLocation) -> Unit,
-) {
-    Text(
-        text = "Download location",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-    DownloadLocation.entries.forEach { location ->
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .selectable(
-                    selected = selected == location,
-                    role = Role.RadioButton,
-                    onClick = { onSelect(location) },
+private fun SettingsCard(header: String, content: @Composable ColumnScope.() -> Unit) {
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(start = 16.dp, top = 14.dp),
+            ) {
+                Hexagon(size = 10.dp, fill = HoneyGradient)
+                Text(
+                    text = header.uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = honeyAccentTextColor(),
+                    modifier = Modifier.padding(start = 6.dp),
                 )
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RadioButton(selected = selected == location, onClick = null)
-            Text(
-                text = locationLabel(location),
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(start = 12.dp),
-            )
+            }
+            content()
         }
     }
 }
+
+/** Compact setting row: title + subtitle on the left, action on the right. */
+@Composable
+private fun SettingRow(
+    title: String,
+    subtitle: String,
+    action: @Composable () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        action()
+    }
+}
+
+/** Outlined pill button ("Change" / "Import" / …). */
+@Composable
+private fun OutlinedPill(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(999.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/**
+ * Storage location row. Default is the app-named folder inside the shared
+ * Downloads collection ("Downloads/NarcicTub"); "Change" opens the SAF
+ * folder picker and takes a persistable grant; "Default" clears an active
+ * custom folder again (releasing the grant).
+ *
+ * PERMISSION STATE: the SAF grant is the permission that keeps the chosen
+ * location working across restarts. If the platform revoked it (app data
+ * cleared, folder removed), the row says so and offers "Re-grant" instead
+ * of pretending everything is fine.
+ */
+@Composable
+private fun StorageLocationRow(
+    customFolderUri: String?,
+    onFolderPicked: (String?) -> Unit,
+) {
+    val context = LocalContext.current
+
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            onFolderPicked(uri.toString())
+        }
+    }
+
+    // مجوز نوشتن روی پوشه انتخابی هنوز معتبر است؟
+    val hasGrant = customFolderUri?.let { uriText ->
+        context.contentResolver.persistedUriPermissions.any {
+            it.uri.toString() == uriText && it.isWritePermission
+        }
+    } == true
+
+    val subtitle = when {
+        customFolderUri == null -> "Downloads / Narcic Tube  ·  write access granted by the system picker"
+        hasGrant -> folderDisplayName(customFolderUri) + "  ·  write access granted"
+        else -> "Access revoked — re-grant to keep saving here"
+    }
+
+    SettingRow(
+        title = "Storage Location",
+        subtitle = subtitle,
+        action = {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (customFolderUri != null) {
+                    TextButton(
+                        onClick = {
+                            runCatching {
+                                context.contentResolver.releasePersistableUriPermission(
+                                    Uri.parse(customFolderUri),
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                                )
+                            }
+                            onFolderPicked(null)
+                        },
+                    ) { Text("Default") }
+                }
+                OutlinedPill(
+                    text = when {
+                        customFolderUri == null -> "Change"
+                        hasGrant -> "Change"
+                        else -> "Re-grant"
+                    },
+                ) { picker.launch(null) }
+            }
+        },
+    )
+}
+
+/** Human-readable folder name from a SAF tree URI ("primary:Music/Foo" → "Music/Foo"). */
+private fun folderDisplayName(uriText: String): String =
+    runCatching {
+        val treeId = DocumentsContract.getTreeDocumentId(Uri.parse(uriText))
+        treeId.substringAfter(':', treeId).ifBlank { "Selected folder" }
+    }.getOrDefault("Selected folder")
 
 /** Concurrent downloads: bounded slider; out-of-range values are impossible. */
 @Composable
-private fun ConcurrentDownloadsSection(
+private fun ConcurrentDownloadsRow(
     value: Int,
     onSelect: (Int) -> Unit,
 ) {
     // Local drag value so DataStore is written once per gesture, not per tick.
     var dragging by remember(value) { mutableFloatStateOf(value.toFloat()) }
 
-    Text(
-        text = "Concurrent downloads",
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-    )
-    Slider(
-        value = dragging,
-        onValueChange = { dragging = it },
-        onValueChangeFinished = { onSelect(dragging.toInt()) },
-        valueRange = AppSettings.MIN_CONCURRENT_DOWNLOADS.toFloat()..AppSettings.MAX_CONCURRENT_DOWNLOADS.toFloat(),
-        steps = AppSettings.MAX_CONCURRENT_DOWNLOADS - AppSettings.MIN_CONCURRENT_DOWNLOADS - 1,
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Text(
-        text = "Up to $value download${if (value == 1) "" else "s"} run at the same time.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingRow(
+        title = "Concurrent Downloads",
+        subtitle = "Max active bees in hive",
+        action = {
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                color = honeyAccentTextColor(),
+                modifier = Modifier.padding(end = 10.dp),
+            )
+            Slider(
+                value = dragging,
+                onValueChange = { dragging = it },
+                onValueChangeFinished = { onSelect(dragging.toInt()) },
+                valueRange = AppSettings.MIN_CONCURRENT_DOWNLOADS.toFloat()..AppSettings.MAX_CONCURRENT_DOWNLOADS.toFloat(),
+                steps = AppSettings.MAX_CONCURRENT_DOWNLOADS - AppSettings.MIN_CONCURRENT_DOWNLOADS - 1,
+                modifier = Modifier.width(120.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                ),
+            )
+        },
     )
 }
 
@@ -242,76 +424,12 @@ private fun ConcurrentDownloadsSection(
  * importing that browser's cookies.txt (Netscape format) lets the downloader
  * do the same. The file stays in app-private storage and is never backed up.
  */
-/**
- * Sharing a YouTube/Instagram link always offers the floating bubble
- * (permission-gated, falls back to opening the app). This toggle is the
- * OPTIONAL extra: also open the bubble automatically for a link that was
- * just copied, without any Share action. See ClipboardWatcherService for
- * why that detection is best-effort on Android 10+.
- */
 @Composable
-private fun ClipboardWatcherSection(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    val context = LocalContext.current
-    var hasOverlayPermission by remember { mutableStateOf(OverlayPermission.isGranted(context)) }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) {
-        hasOverlayPermission = OverlayPermission.isGranted(context)
-        if (hasOverlayPermission && enabled) ClipboardWatcherService.start(context)
-    }
-
-    // Keeps the running service in sync with the persisted setting across
-    // process restarts, without owning the setting itself.
-    LaunchedEffect(enabled, hasOverlayPermission) {
-        if (enabled && hasOverlayPermission) {
-            ClipboardWatcherService.start(context)
-        } else {
-            ClipboardWatcherService.stop(context)
-        }
-    }
-
-    Text(
-        text = "Sharing a link always offers the floating bubble. Turn this on to also " +
-            "open it automatically for a link you just copied — no Share button needed. " +
-            "Needs \"display over other apps\"; detection isn't guaranteed while the app " +
-            "is fully in the background (an Android 10+ restriction).",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text("Suggest downloads from clipboard", style = MaterialTheme.typography.bodyMedium)
-        Switch(
-            checked = enabled,
-            onCheckedChange = { checked ->
-                if (checked && !hasOverlayPermission) {
-                    permissionLauncher.launch(OverlayPermission.requestIntent(context))
-                }
-                onToggle(checked)
-            },
-        )
-    }
-    if (enabled && !hasOverlayPermission) {
-        Text(
-            text = "Permission not granted yet — the watcher will start once you allow it.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-        )
-    }
-}
-
-@Composable
-private fun LoginCookiesSection() {
+private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var hasCookies by remember { mutableStateOf(YtDlpCookies.exists(context)) }
-    var status by remember { mutableStateOf<String?>(null) }
+    var hasCookies by remember(epoch) { mutableStateOf(YtDlpCookies.exists(context)) }
+    var status by remember(epoch) { mutableStateOf<String?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -327,34 +445,35 @@ private fun LoginCookiesSection() {
         }
     }
 
-    Text(
-        text = "Export your browser cookies to a cookies.txt file and import it here. " +
-            "It stays on this device and is only used for YouTube and Instagram downloads.",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Button(onClick = { picker.launch(arrayOf("*/*")) }) {
-            Text(if (hasCookies) "Replace cookies.txt" else "Import cookies.txt")
-        }
-        if (hasCookies) {
-            TextButton(
-                onClick = {
-                    YtDlpCookies.clear(context)
-                    hasCookies = false
-                    status = "Cookies removed."
-                },
-            ) {
-                Text("Remove")
-            }
-        }
-    }
-    status?.let {
-        Text(
-            text = it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column {
+        SettingRow(
+            title = "YouTube & IG Cookies",
+            subtitle = if (hasCookies) "cookies.txt imported" else "None imported",
+            action = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedPill(text = "Log in") { onShowLogin() }
+                    OutlinedPill(
+                        text = if (hasCookies) "Remove" else "Import",
+                    ) {
+                        if (hasCookies) {
+                            YtDlpCookies.clear(context)
+                            hasCookies = false
+                            status = "Cookies removed."
+                        } else {
+                            picker.launch(arrayOf("*/*"))
+                        }
+                    }
+                }
+            },
         )
+        status?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+            )
+        }
     }
 }
 
@@ -379,11 +498,4 @@ private fun themeLabel(mode: ThemeMode): String = when (mode) {
     ThemeMode.SYSTEM -> "System"
     ThemeMode.DARK -> "Dark"
     ThemeMode.LIGHT -> "Light"
-}
-
-private fun locationLabel(location: DownloadLocation): String = when (location) {
-    DownloadLocation.DOWNLOADS -> "Downloads"
-    DownloadLocation.MUSIC -> "Music"
-    DownloadLocation.MOVIES -> "Movies"
-    DownloadLocation.DCIM -> "DCIM (Camera)"
 }

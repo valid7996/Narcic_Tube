@@ -13,17 +13,19 @@ enum class DownloadLocation { DOWNLOADS, MUSIC, MOVIES, DCIM }
 data class AppSettings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val downloadLocation: DownloadLocation = DownloadLocation.DOWNLOADS,
+    /**
+     * SAF document-tree URI of a user-picked custom download folder
+     * (Settings → Custom folder). Null = follow [downloadLocation]; non-null
+     * overrides it — the publisher falls back to [downloadLocation] when the
+     * picked folder is no longer accessible (permission revoked, folder
+     * removed), so a download never dies because of the override.
+     */
+    val customDownloadFolderUri: String? = null,
+    /** SAF tree URI of the picked WhatsApp statuses folder (status saver). */
+    val whatsappStatusFolderUri: String? = null,
     val wifiOnly: Boolean = true,
     val concurrentDownloads: Int = 3,
     val notificationsEnabled: Boolean = true,
-    /**
-     * Background link detection: a foreground service watches the clipboard
-     * and, on YouTube/Instagram links, opens the floating download bubble
-     * without bringing the app to the foreground. Off by default — it needs
-     * the "display over other apps" permission and runs a foreground
-     * service with an ongoing notification, so the user opts in explicitly.
-     */
-    val clipboardWatcherEnabled: Boolean = false,
 ) {
     companion object {
         /**

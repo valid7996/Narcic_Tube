@@ -80,7 +80,7 @@ jobs:
           name: NarcicTub-debug-apk
           # Exact known build output only — never the workspace, .gradle,
           # .git, local.properties or any keystore (none exists in-repo).
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-universal-debug.apk
           if-no-files-found: error
           retention-days: 7
 
@@ -94,6 +94,9 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # انتشار GitHub Release نیاز به نوشتن contents دارد
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -114,60 +117,48 @@ jobs:
           # Tag pushes come from the trusted ref — caches may be saved.
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      # Honest secret handling: if any signing secret is missing, fail with
-      # an actionable message instead of producing an unsigned artifact that
-      # could be mistaken for a signed release.
-      - name: Verify signing secrets are present
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          missing=0
-          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Release secret '${name}' is not configured in the repository settings - cannot produce a signed release."
-              missing=1
-            fi
-          done
-          exit $missing
+      # HONEY RELEASES: signing material lives in the (private) repo —
+      # keystore.properties + keystore/*.jks — so no secrets setup is needed
+      # here. This job publishes a real GitHub Release with per-ABI APKs.
+      - name: Make Gradle wrapper executable
+        # gradlew is committed without the executable bit (Windows checkout).
+        run: chmod +x gradlew
 
-      - name: Restore release keystore from secret
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-          # Decoded ONLY into the runner's temp dir: never the workspace
-          # (so it can never be uploaded), never printed, never committed.
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/narcictub-release.keystore"
-          chmod 600 "$RUNNER_TEMP/narcictub-release.keystore"
-
-      - name: Build signed release APK and AAB
-        env:
-          NARCIC_TUB_KEYSTORE_PATH: ${{ runner.temp }}/narcictub-release.keystore
-          NARCIC_TUB_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          NARCIC_TUB_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          NARCIC_TUB_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      - name: Build signed release APKs (per ABI + universal) and AAB
         run: ./gradlew assembleRelease bundleRelease
 
       - name: Generate SHA-256 checksums
         run: |
-          sha256sum app/build/outputs/apk/release/app-release.apk \
-                    app/build/outputs/bundle/release/app-release.aab \
-            > app/build/outputs/SHA256SUMS.txt
-          cat app/build/outputs/SHA256SUMS.txt
+          cd app/build/outputs
+          sha256sum apk/release/*.apk bundle/release/*.aab > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
-      - name: Remove temporary keystore
-        if: always()
-        run: rm -f "$RUNNER_TEMP/narcictub-release.keystore"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Narcic Tube ${GITHUB_REF_NAME}" \
+            --notes "Signed release build.
 
-      - name: Upload signed release artifacts
+          **Which APK?**
+          - \`arm64-v8a\` — most modern phones ✅
+          - \`armeabi-v7a\` — older 32-bit phones
+          - \`x86_64\` — emulators / Intel devices
+          - \`universal\` — works on everything (larger)
+
+          Install the matching APK, or grab the \`.aab\` if you need it for Play." \
+            app/build/outputs/apk/release/*.apk \
+            app/build/outputs/bundle/release/*.aab \
+            app/build/outputs/SHA256SUMS.txt
+
+      - name: Upload signed release artifacts (backup copy)
         uses: actions/upload-artifact@v4
         with:
-          name: NarcicTub-release-${{ github.ref_name }}
+          name: NarcicTube-release-${{ github.ref_name }}
           path: |
-            app/build/outputs/apk/release/app-release.apk
-            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/bundle/release/*.aab
             app/build/outputs/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14

@@ -14,9 +14,6 @@ sealed interface Destination {
     @Serializable
     data object Downloads : Destination
 
-    @Serializable
-    data object History : Destination
-
     /**
      * PHASE 11: in-app playback of ONE completed, available local media
      * record. Not a top-level tab — the bottom bar hides on this route.
@@ -26,14 +23,21 @@ sealed interface Destination {
     @Serializable
     data class Playback(val itemId: Long) : Destination
 
+    /**
+     * WhatsApp status saver — lists the picked .Statuses folder and saves
+     * items into the gallery. Opened from Settings.
+     */
+    @Serializable
+    data object Statuses : Destination
+
     @Serializable
     data object Settings : Destination
 }
 
-/** Top-level tabs shown in the bottom bar, in display order. */
+/** Top-level tabs shown in the bottom bar, in display order. History
+ * lives inside the Downloads screen (hive folder up, history down). */
 val topLevelDestinations = listOf(
     Destination.Home,
     Destination.Downloads,
-    Destination.History,
     Destination.Settings,
 )

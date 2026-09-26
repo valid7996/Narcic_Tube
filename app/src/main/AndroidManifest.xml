@@ -10,13 +10,12 @@
          source of truth. Downloads work without it. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- Floating download bubble (Share intake + optional clipboard watcher).
-         A SPECIAL permission granted from system Settings, never requested
-         as a runtime prompt — both features degrade gracefully without it
-         (see ShareTrampolineActivity / ClipboardWatcherService). -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <!-- Background downloads: the foreground service keeps the process alive
+         while rows are queued/active (e.g. after the share dialog closes).
+         dataSync is the accurate type; both permissions are required to
+         declare and start such a service on API 28+/34+. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".NarcicTubApplication"
@@ -39,45 +38,31 @@
             </intent-filter>
         </activity>
 
-        <!-- The real Share-sheet target (moved off MainActivity): invisible,
-             decides between the floating bubble and opening the app, and
-             finishes itself immediately. See ShareTrampolineActivity. -->
+        <!-- Share target: a small floating dialog over the sharing app
+             (YouTube/Instagram → Share → NarcicTub). Receives shared TEXT
+             links only — no wildcard MIME, no file intake, no broad capture.
+             excludeFromRecents + noHistory keep the sharing app's task
+             untouched once the dialog is dismissed. -->
         <activity
-            android:name=".overlay.ShareTrampolineActivity"
+            android:name=".ui.share.ShareDownloadActivity"
             android:exported="true"
+            android:theme="@style/Theme.NarcicTub.ShareDialog"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:taskAffinity=""
-            android:theme="@style/Theme.NarcicTub.Transparent">
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-
-        <!-- Floating "chat head" bubble: resolves one link and enqueues the
-             download without opening the app. See OverlayBubbleService. -->
+        <!-- Keeps the process alive while downloads are queued/active so a
+             dismissed share dialog (or app switch) never kills a download.
+             Not exported — only the app itself can start it. -->
         <service
-            android:name=".overlay.OverlayBubbleService"
+            android:name=".notify.DownloadForegroundService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="floating_download_bubble_ui" />
-        </service>
-
-        <!-- Optional (Settings toggle, off by default): opens the bubble for
-             a newly copied link. See ClipboardWatcherService for the
-             Android 10+ background-clipboard limitation this is subject to. -->
-        <service
-            android:name=".overlay.ClipboardWatcherService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="clipboard_link_detection" />
-        </service>
+            android:foregroundServiceType="dataSync" />
     </application>
 
 </manifest>

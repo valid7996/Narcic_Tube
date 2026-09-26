@@ -39,7 +39,7 @@ object DownloadNotifications {
     /** Stable channel for ALL download notifications — created idempotently. */
     const val CHANNEL_ID = "downloads"
 
-    private const val APP_NAME = "NarcicTub"
+    private const val APP_NAME = "Narcic Tube"
 
     /**
      * Builds the snapshot for one history row. Returns null when the row
@@ -108,6 +108,15 @@ object DownloadNotifications {
         if (!seenBefore && snapshot.status == DownloadStatus.FAILED) return NotificationAction.SKIP
         if (!seenBefore && snapshot.status == DownloadStatus.CANCELLED) return NotificationAction.SKIP
         return NotificationAction.POST_OR_UPDATE
+    }
+
+    /**
+     * True while a row still needs the process alive (queued for a slot,
+     * transferring, or paused) — the foreground service's stop condition.
+     */
+    fun isInFlight(status: DownloadStatus): Boolean = when (status) {
+        DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED -> true
+        else -> false
     }
 
     private fun humanBytes(bytes: Long): String = when {

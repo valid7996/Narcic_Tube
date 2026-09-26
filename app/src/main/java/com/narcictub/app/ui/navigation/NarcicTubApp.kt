@@ -5,11 +5,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -18,12 +20,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.narcictub.app.domain.model.DownloadStatus
 import com.narcictub.app.ui.downloads.DownloadsScreen
-import com.narcictub.app.ui.history.HistoryScreen
+import com.narcictub.app.ui.downloads.DownloadsViewModel
+import com.narcictub.app.ui.theme.honeycomb
 import com.narcictub.app.ui.home.HomeScreen
-import com.narcictub.app.ui.home.ShareIntakeViewModel
 import com.narcictub.app.ui.playback.PlaybackScreen
 import com.narcictub.app.ui.settings.SettingsScreen
+import com.narcictub.app.ui.status.StatusesScreen
 
 /**
  * Root app scaffold: bottom bar + NavHost with type-safe routes.
@@ -32,6 +36,8 @@ import com.narcictub.app.ui.settings.SettingsScreen
 fun NarcicTubApp(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    openDownloadsFirst: Boolean = false,
+    onDownloadsOpened: () -> Unit = {},
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
@@ -39,26 +45,38 @@ fun NarcicTubApp(
         currentDestination?.hasRoute(dest::class) == true
     }
 
-    // PHASE 17: a pending Android-Share intake routes the user to Home,
-    // where the event is consumed (pre-filled + resolved, never auto-
-    // downloaded). The intake ViewModel here is the same activity-scoped
-    // instance the activity and HomeScreen see — single source of truth.
-    val shareViewModel: ShareIntakeViewModel = hiltViewModel()
-    val pendingShare by shareViewModel.pending.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingShare) {
-        if (pendingShare != null) {
-            navController.navigateToTopLevel(Destination.Home)
+    // زنده: تعداد دانلودهای فعال برای نشان روی تب Downloads
+    val downloadsViewModel: DownloadsViewModel = hiltViewModel()
+    val downloadsOverview by downloadsViewModel.overview.collectAsStateWithLifecycle()
+    val activeDownloads = downloadsOverview.items.count {
+        it.status == DownloadStatus.QUEUED ||
+            it.status == DownloadStatus.DOWNLOADING ||
+            it.status == DownloadStatus.PAUSED
+    }
+
+    // One-shot deep link from the share dialog's "Go to downloads" button:
+    // land directly on the Downloads tab where live progress is visible.
+    LaunchedEffect(openDownloadsFirst) {
+        if (openDownloadsFirst) {
+            navController.navigateToTopLevel(Destination.Downloads)
+            onDownloadsOpened()
         }
     }
 
     Scaffold(
-        modifier = modifier,
+        modifier = modifier.honeycomb(
+            MaterialTheme.colorScheme.primary,
+            alpha = 0.05f,
+            tile = 80.dp,
+        ),
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             if (showBottomBar) {
                 NarcicTubBottomBar(
                     destinations = topLevelDestinationUiList,
                     currentDestination = currentDestination,
                     onNavigate = { dest -> navController.navigateToTopLevel(dest) },
+                    badgeCount = activeDownloads,
                 )
             }
         },
@@ -77,9 +95,9 @@ fun NarcicTubApp(
             },
         ) {
             composable<Destination.Home> { HomeScreen() }
-            composable<Destination.Downloads> { DownloadsScreen() }
-            composable<Destination.History> {
-                HistoryScreen(
+            composable<Destination.Downloads> {
+                // تاریخچه داخل همین صفحه است: پوشه کندو بالا، تاریخچه پایین
+                DownloadsScreen(
                     onPlayMedia = { itemId ->
                         navController.navigate(Destination.Playback(itemId))
                     },
@@ -88,7 +106,12 @@ fun NarcicTubApp(
             composable<Destination.Playback> {
                 PlaybackScreen(onBack = { navController.popBackStack() })
             }
-            composable<Destination.Settings> { SettingsScreen() }
+            composable<Destination.Settings> {
+                SettingsScreen(onOpenStatuses = { navController.navigate(Destination.Statuses) })
+            }
+            composable<Destination.Statuses> {
+                StatusesScreen(onBack = { navController.popBackStack() })
+            }
         }
     }
 }

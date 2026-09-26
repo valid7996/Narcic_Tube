@@ -2,7 +2,6 @@ package com.narcictub.app.data.ytdlp
 
 import android.content.Context
 import com.yausername.ffmpeg.FFmpeg
-import com.yausername.youtubedl_android.UpdateChannel
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -68,15 +67,18 @@ open class YtDlpEngine @Inject constructor(
         warmUpStarted = true
         try {
             initialize()
-            if (AUTO_UPDATE_ON_LAUNCH) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        YoutubeDL.getInstance().updateYoutubeDL(context, UpdateChannel.STABLE)
-                    }
-                } catch (e: Throwable) {
-                    if (e is CancellationException) throw e
-                    // Offline / GitHub rate-limited: keep the bundled version.
+            // آپدیت دوباره فعال شد (v1.2.0 — اصلاح v1.1.2): موتور قدیمیِ
+            // باندل‌شده در برابر اینستاگرامِ ۲۰۲۶ مُرد (پیام login برای همه
+            // پست‌ها)؛ موتور آپدیت‌شده ویدیو/ریلز اینستاگرام را بدون کوکی
+            // می‌گیرد. اولین باز شدن با اینترنت/VPN طول می‌کشد؛ اگر آپدیت
+            // ناموفق بود، همان نسخه باندل‌شده استفاده می‌شود.
+            try {
+                withContext(Dispatchers.IO) {
+                    YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
                 }
+            } catch (e: Throwable) {
+                if (e is CancellationException) throw e
+                // Offline / GitHub rate-limited: keep the bundled version.
             }
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
@@ -156,7 +158,14 @@ open class YtDlpEngine @Inject constructor(
     }
 
     private fun applyCommonOptions(request: YoutubeDLRequest) {
-        // Optional login session (Settings → import cookies.txt).
+        // No --extractor-args here, deliberately: yt-dlp's default client set
+        // returns the full https DASH format list (all heights + audio-only),
+        // and logs in are not required for regular videos. Alternative
+        // clients (android_vr/tv/ios) were tried and REGRESS hard: they
+        // return HLS-only streams, which collapse the variant list to the
+        // single 360p muxed format and fail to download (PO-token gating).
+        // Optional login session (Settings → import cookies.txt) still
+        // applies on top for age-restricted/private media.
         if (YtDlpCookies.exists(context)) {
             request.addOption("--cookies", YtDlpCookies.file(context).absolutePath)
         }
@@ -167,7 +176,7 @@ open class YtDlpEngine @Inject constructor(
     }
 
     private companion object {
-        /** Keeps bundled yt-dlp current (YouTube changes often). Flip to false to disable. */
+        /** Keeps the engine current against platform changes (v1.2.0). */
         const val AUTO_UPDATE_ON_LAUNCH = true
         const val WARM_UP_WAIT_MS = 20_000L
         const val DENO_LIBRARY_NAME = "libdeno.so"

@@ -1,3 +1,8 @@
+import java.util.Properties
+
+
+
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,22 +11,29 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// PHASE 16: release signing material is injected ONLY via environment
-// variables (CI: GitHub Secrets mapped to these names; local: explicitly
-// exported by the developer). No credential is ever read from the repo, and
-// no secret value is ever printed. When any variable is missing the release
-// build type stays UNSIGNED — there is deliberately NO debug-signing
-// fallback, so an unsigned artifact can never masquerade as a signed one.
-val releaseKeystorePath: String? = System.getenv("NARCIC_TUB_KEYSTORE_PATH")
-val releaseKeystorePassword: String? = System.getenv("NARCIC_TUB_KEYSTORE_PASSWORD")
-val releaseKeyAlias: String? = System.getenv("NARCIC_TUB_KEY_ALIAS")
-val releaseKeyPassword: String? = System.getenv("NARCIC_TUB_KEY_PASSWORD")
+// HONEY RELEASE SIGNING: the release keystore + its passwords live in
+// keystore.properties (committed) so CI can produce SIGNED GitHub Releases
+// without configuring secrets. The repo is PRIVATE — treat any leak of this
+// repository as a signing-material leak. Environment variables still
+// override the properties file when present.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val releaseKeystorePath: String? =
+    System.getenv("NARCIC_TUB_KEYSTORE_PATH") ?: keystoreProperties.getProperty("storeFile")
+val releaseKeystorePassword: String? =
+    System.getenv("NARCIC_TUB_KEYSTORE_PASSWORD") ?: keystoreProperties.getProperty("storePassword")
+val releaseKeyAlias: String? =
+    System.getenv("NARCIC_TUB_KEY_ALIAS") ?: keystoreProperties.getProperty("keyAlias")
+val releaseKeyPassword: String? =
+    System.getenv("NARCIC_TUB_KEY_PASSWORD") ?: keystoreProperties.getProperty("keyPassword")
 val hasReleaseSigning: Boolean =
     listOf(releaseKeystorePath, releaseKeystorePassword, releaseKeyAlias, releaseKeyPassword)
         .all { !it.isNullOrBlank() }
 
 if (hasReleaseSigning) {
-    println("NarcicTub release signing: configured from environment variables.")
+    println("NarcicTub release signing: configured.")
 } else {
     println("NarcicTub release signing: NOT configured — release artifacts will be UNSIGNED.")
 }
@@ -34,8 +46,8 @@ android {
         applicationId = "com.narcictub.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 5
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -62,22 +74,34 @@ android {
         }
     }
 
+    // ریلز با APK جدا برای هر پردازنده + یک universal — برای صفحه Releases گیتهاب
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86_64")
+            isUniversalApk = true
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            // PHASE 16: resource shrinking is safe here — the app performs no
-            // dynamic resource lookups (no getIdentifier usage, audited).
-            isShrinkResources = true
+            // Minify/Resource-shrink intentionally DISABLED (v1.1.1 fix):
+            // R8 broke the bundled youtubedl-android engine on release
+            // builds — init threw and every platform showed "download
+            // engine couldn't start" while debug worked. Release now builds
+            // exactly like debug (plus signing + ABI splits). The keep
+            // rules stay in proguard-rules.pro for a future re-attempt.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
-            // PHASE 16: the env-injected signing config is attached when
-            // present; otherwise the release build stays UNSIGNED (default)
-            // — it is never silently debug-signed.
+            // امضای release از keystore.properties (داخل ریپو) اعمال می‌شود
             signingConfig = signingConfigs.findByName("release")
         }
     }

@@ -29,10 +29,11 @@ val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
 private object SettingsKeys {
     val THEME = stringPreferencesKey("theme")
     val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
+    val CUSTOM_FOLDER_URI = stringPreferencesKey("custom_folder_uri")
+    val WA_STATUS_FOLDER_URI = stringPreferencesKey("wa_status_folder_uri")
     val WIFI_ONLY = booleanPreferencesKey("wifi_only")
     val CONCURRENT_DOWNLOADS = intPreferencesKey("concurrent_downloads")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
-    val CLIPBOARD_WATCHER_ENABLED = booleanPreferencesKey("clipboard_watcher_enabled")
 }
 
 /**
@@ -60,11 +61,14 @@ class SettingsRepositoryImpl @Inject constructor(
                 downloadLocation = prefs[SettingsKeys.DOWNLOAD_LOCATION]
                     ?.let { runCatching { DownloadLocation.valueOf(it) }.getOrNull() }
                     ?: DownloadLocation.DOWNLOADS,
+                customDownloadFolderUri = prefs[SettingsKeys.CUSTOM_FOLDER_URI]
+                    ?.takeIf { it.isNotBlank() },
+                whatsappStatusFolderUri = prefs[SettingsKeys.WA_STATUS_FOLDER_URI]
+                    ?.takeIf { it.isNotBlank() },
                 wifiOnly = prefs[SettingsKeys.WIFI_ONLY] ?: true,
                 concurrentDownloads = (prefs[SettingsKeys.CONCURRENT_DOWNLOADS] ?: 3)
                     .coerceIn(MIN_CONCURRENT, MAX_CONCURRENT),
                 notificationsEnabled = prefs[SettingsKeys.NOTIFICATIONS_ENABLED] ?: true,
-                clipboardWatcherEnabled = prefs[SettingsKeys.CLIPBOARD_WATCHER_ENABLED] ?: false,
             )
         }
 
@@ -74,6 +78,20 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setDownloadLocation(location: DownloadLocation) {
         dataStore.edit { it[SettingsKeys.DOWNLOAD_LOCATION] = location.name }
+    }
+
+    override suspend fun setCustomDownloadFolder(uri: String?) {
+        dataStore.edit { prefs ->
+            if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.CUSTOM_FOLDER_URI)
+            else prefs[SettingsKeys.CUSTOM_FOLDER_URI] = uri
+        }
+    }
+
+    override suspend fun setWhatsappStatusFolder(uri: String?) {
+        dataStore.edit { prefs ->
+            if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.WA_STATUS_FOLDER_URI)
+            else prefs[SettingsKeys.WA_STATUS_FOLDER_URI] = uri
+        }
     }
 
     override suspend fun setWifiOnly(enabled: Boolean) {
@@ -88,10 +106,6 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setNotificationsEnabled(enabled: Boolean) {
         dataStore.edit { it[SettingsKeys.NOTIFICATIONS_ENABLED] = enabled }
-    }
-
-    override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {
-        dataStore.edit { it[SettingsKeys.CLIPBOARD_WATCHER_ENABLED] = enabled }
     }
 
     companion object {

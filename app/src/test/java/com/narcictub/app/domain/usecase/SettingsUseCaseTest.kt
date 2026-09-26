@@ -21,6 +21,7 @@ class SettingsUseCaseTest {
     private class RecordingSettingsRepository : SettingsRepository {
         val themeWrites = mutableListOf<ThemeMode>()
         val locationWrites = mutableListOf<DownloadLocation>()
+        val folderWrites = mutableListOf<String?>()
         val concurrentWrites = mutableListOf<Int>()
         var fail = false
 
@@ -34,6 +35,13 @@ class SettingsUseCaseTest {
             if (fail) throw IOException("boom")
             locationWrites.add(location)
         }
+        override suspend fun setCustomDownloadFolder(uri: String?) {
+            if (fail) throw IOException("boom")
+            folderWrites.add(uri)
+        }
+        override suspend fun setWhatsappStatusFolder(uri: String?) {
+            if (fail) throw IOException("boom")
+        }
         override suspend fun setWifiOnly(enabled: Boolean) {
             if (fail) throw IOException("boom")
         }
@@ -44,50 +52,17 @@ class SettingsUseCaseTest {
         override suspend fun setNotificationsEnabled(enabled: Boolean) {
             if (fail) throw IOException("boom")
         }
-        val clipboardWatcherWrites = mutableListOf<Boolean>()
-        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {
-            if (fail) throw IOException("boom")
-            clipboardWatcherWrites.add(enabled)
-        }
     }
 
     private lateinit var repository: RecordingSettingsRepository
 
-    private fun useCases(): Quadruple {
+    private fun useCases(): Triple<SetThemeModeUseCase, SetDownloadLocationUseCase, SetConcurrentDownloadsUseCase> {
         repository = RecordingSettingsRepository()
-        return Quadruple(
+        return Triple(
             SetThemeModeUseCase(repository),
             SetDownloadLocationUseCase(repository),
             SetConcurrentDownloadsUseCase(repository),
-            SetClipboardWatcherEnabledUseCase(repository),
         )
-    }
-
-    private data class Quadruple(
-        val theme: SetThemeModeUseCase,
-        val location: SetDownloadLocationUseCase,
-        val concurrent: SetConcurrentDownloadsUseCase,
-        val clipboardWatcher: SetClipboardWatcherEnabledUseCase,
-    )
-
-    // ===== clipboard watcher toggle =====
-
-    @Test
-    fun `clipboard watcher enabled state is persisted as given`() = runTest {
-        val (_, _, _, setClipboardWatcher) = useCases()
-
-        assertTrue(setClipboardWatcher(true).isSuccess)
-        assertTrue(setClipboardWatcher(false).isSuccess)
-
-        assertEquals(listOf(true, false), repository.clipboardWatcherWrites)
-    }
-
-    @Test
-    fun `clipboard watcher write failure is mapped to a Result failure`() = runTest {
-        val (_, _, _, setClipboardWatcher) = useCases()
-        repository.fail = true
-
-        assertTrue(setClipboardWatcher(true).isFailure)
     }
 
     // ===== concurrent downloads: the range gate =====
@@ -165,6 +140,38 @@ class SettingsUseCaseTest {
         val result = setLocation(DownloadLocation.MOVIES)
         assertTrue(result.isSuccess)
         assertEquals(listOf(DownloadLocation.MOVIES), repository.locationWrites)
+    }
+
+    // ===== custom download folder delegation =====
+
+    @Test
+    fun `custom folder setter delegates the picked tree uri`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        val uri = "content://com.android.externalstorage.documents/tree/primary%3AMusic"
+        val result = setFolder(uri)
+        assertTrue(result.isSuccess)
+        assertEquals(listOf<String?>(uri), repository.folderWrites)
+    }
+
+    @Test
+    fun `custom folder setter delegates a null clear`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        assertTrue(setFolder("content://x/tree/y").isSuccess)
+        val result = setFolder(null)
+        assertTrue(result.isSuccess)
+        assertEquals(listOf("content://x/tree/y", null), repository.folderWrites)
+    }
+
+    @Test
+    fun `custom folder repository failure maps to Result failure`() = runTest {
+        repository = RecordingSettingsRepository()
+        val setFolder = SetCustomDownloadFolderUseCase(repository)
+        repository.fail = true
+        val result = setFolder("content://x/tree/y")
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull() is IOException)
     }
 
     @Test

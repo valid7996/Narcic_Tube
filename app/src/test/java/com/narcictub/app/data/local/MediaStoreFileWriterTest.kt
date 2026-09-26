@@ -49,27 +49,45 @@ class MediaStoreFileWriterTest {
     @get:Rule
     val tmp = TemporaryFolder()
 
-    private class FakeSettingsRepository : SettingsRepository {
-        override val settings = MutableStateFlow(AppSettings())
+    private class FakeSettingsRepository(
+        initial: AppSettings = AppSettings(),
+    ) : SettingsRepository {
+        override val settings = MutableStateFlow(initial)
         override suspend fun setTheme(mode: ThemeMode) {}
         override suspend fun setDownloadLocation(location: DownloadLocation) {}
+        override suspend fun setCustomDownloadFolder(uri: String?) {}
+        override suspend fun setWhatsappStatusFolder(uri: String?) {}
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setConcurrentDownloads(count: Int) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
-        override suspend fun setClipboardWatcherEnabled(enabled: Boolean) {}
     }
 
     /** Writer with both publish paths instrumented; records which path ran. */
     private class TestWriter(
         private val sdk: Int,
+        settings: AppSettings = AppSettings(),
     ) : MediaStoreFileWriter(
         context = mockk<Context>(relaxed = true),
-        settingsRepository = FakeSettingsRepository(),
+        settingsRepository = FakeSettingsRepository(settings),
     ) {
         val qPlusNames = mutableListOf<String>()
+        val qPlusSubDirs = mutableListOf<String?>()
         val legacyNames = mutableListOf<String>()
+        val safTreeUris = mutableListOf<String>()
+        var failSaf = false
 
         override fun deviceSdkInt(): Int = sdk
+
+        override fun publishViaSaf(
+            treeUriText: String,
+            stagingFile: File,
+            safeName: String,
+            mimeType: String?,
+        ): Uri {
+            if (failSaf) throw java.io.IOException("persistable grant revoked")
+            safTreeUris.add(treeUriText)
+            return mockk(relaxed = true)
+        }
 
         override fun publishViaQPlus(
             location: DownloadLocation,
@@ -79,6 +97,7 @@ class MediaStoreFileWriterTest {
             subDirectory: String?,
         ): Uri {
             qPlusNames.add(safeName)
+            qPlusSubDirs.add(subDirectory)
             return mockk(relaxed = true)
         }
 
@@ -141,6 +160,113 @@ class MediaStoreFileWriterTest {
         assertFalse(qPlus.qPlusNames[0].contains(".."))
         assertFalse(qPlus.qPlusNames[0].contains('\\'))
         assertFalse(qPlus.qPlusNames[0].contains('|'))
+    }
+
+    // ===== 4. custom folder (SAF) dispatch =====
+
+    @Test
+    fun `default publish lands in the app named subfolder of the collection`() {
+        for (location in DownloadLocation.entries) {
+            val writer = TestWriter(29, settings = AppSettings(downloadLocation = location))
+            runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4") }
+            val expected = when (location) {
+                DownloadLocation.DOWNLOADS -> "Download/NarcicTub"
+                DownloadLocation.MUSIC -> "Music/NarcicTub"
+                DownloadLocation.MOVIES -> "Movies/NarcicTub"
+                DownloadLocation.DCIM -> "DCIM/NarcicTub"
+            }
+            assertEquals("location $location", listOf<String?>(expected), writer.qPlusSubDirs)
+        }
+    }
+
+    @Test
+    fun `explicit sub directory passes through unchanged`() {
+        val writer = TestWriter(29)
+        runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4", subDirectory = "Download/Custom") }
+        assertEquals(listOf<String?>("Download/Custom"), writer.qPlusSubDirs)
+    }
+
+    @Test
+    fun `custom folder override is applied before the subfolder default`() {
+        val writer = TestWriter(29, settings = AppSettings(customDownloadFolderUri = "content://x/tree/y"))
+        runBlocking { writer.publish(stagingFile(), "a.mp4", "video/mp4") }
+        assertTrue(writer.qPlusSubDirs.isEmpty())
+        assertEquals(1, writer.safTreeUris.size)
+    }
+
+    @Test
+    fun `custom folder routes to the SAF publisher on every API level`() {
+        val treeUri = "content://com.android.externalstorage.documents/tree/primary%3ADownload"
+        for (sdk in 26..34) {
+            val writer = TestWriter(sdk, settings = AppSettings(customDownloadFolderUri = treeUri))
+            runBlocking { writer.publish(stagingFile(), "movie.mp4", "video/mp4") }
+            assertEquals("sdk $sdk must route to the SAF publisher", listOf(treeUri), writer.safTreeUris)
+            assertTrue(
+                "sdk $sdk must not touch the platform publishers while the override is active",
+                writer.qPlusNames.isEmpty() && writer.legacyNames.isEmpty(),
+            )
+        }
+    }
+
+    @Test
+    fun `display name is sanitized before the SAF dispatch`() {
+        val writer = TestWriter(29, settings = AppSettings(customDownloadFolderUri = "content://x/tree/y"))
+        runBlocking { writer.publish(stagingFile(), "..\\..\\evil|name.mp4", null) }
+        assertEquals(1, writer.safTreeUris.size)
+    }
+
+    @Test
+    fun `SAF failure falls back to the platform publisher for the configured location`() {
+        val writer = TestWriter(
+            29,
+            settings = AppSettings(
+                downloadLocation = DownloadLocation.MUSIC,
+                customDownloadFolderUri = "content://x/tree/y",
+            ),
+        )
+        writer.failSaf = true
+        runBlocking { writer.publish(stagingFile(), "movie.mp4", "video/mp4") }
+        assertEquals("the download must still complete via the Q+ publisher", listOf("movie.mp4"), writer.qPlusNames)
+        assertTrue("a failed SAF attempt must not be reported as routed", writer.safTreeUris.isEmpty())
+    }
+
+    @Test
+    fun `SAF failure falls back to the legacy publisher on pre Q`() {
+        val writer = TestWriter(
+            28,
+            settings = AppSettings(
+                downloadLocation = DownloadLocation.DOWNLOADS,
+                customDownloadFolderUri = "content://x/tree/y",
+            ),
+        )
+        writer.failSaf = true
+        runBlocking { writer.publish(stagingFile(), "movie.mp4", null) }
+        assertEquals(listOf("movie.mp4"), writer.legacyNames)
+        assertTrue(writer.qPlusNames.isEmpty())
+    }
+
+    @Test
+    fun `SAF publisher contains no Q only MediaStore symbols`() {
+        val saf = sourceFile("com/narcictub/app/data/local/SafFolderPublisher.kt")
+        assumeTrue("source tree not found from test working dir", saf != null)
+        val qOnlyTokens = listOf(
+            "IS_PENDING",
+            "RELATIVE_PATH",
+            "VOLUME_EXTERNAL_PRIMARY",
+            "MediaStore.Downloads",
+            "MediaStore.Audio",
+            "MediaStore.Video",
+            "MediaStore.Images",
+            "MediaStore.MediaColumns",
+            "import android.provider.MediaStore",
+        )
+        for (token in qOnlyTokens) {
+            assertFalse(
+                "${saf!!.name} must not reference Q-only symbol '$token' — " +
+                    "the class is loaded on API 26–28 and would crash with NoClassDefFoundError",
+                saf.readText().contains(token),
+            )
+        }
     }
 
     // ===== 2. Q-only symbol confinement (class-loading safety) =====
@@ -251,10 +377,6 @@ class MediaStoreFileWriterTest {
         }
 
         assertTrue(result.isFailure)
-        // The app's own subfolder (created up front, same as any directory
-        // creation) is expected to exist; what must NOT survive is any
-        // trace of the failed copy inside it.
-        val appFolder = File(dir, com.narcictub.app.domain.DownloadLocationPolicy.legacySubFolder())
-        assertEquals("no partial publish may survive a failure", 0, appFolder.listFiles()?.size ?: 0)
+        assertEquals("no partial publish may survive a failure", 0, dir.listFiles()?.size ?: 0)
     }
 }

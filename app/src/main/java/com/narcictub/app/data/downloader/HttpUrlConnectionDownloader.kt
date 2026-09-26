@@ -58,16 +58,11 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
     override suspend fun download(
         url: String,
         destination: File,
-        resumeFromBytes: Long,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadFileResult = withContext(Dispatchers.IO) {
         var currentUrl = url
         var redirects = 0
         var connection: HttpURLConnection? = null
-        // A prior partial file only survives a genuine resumeFromBytes > 0
-        // AND actually existing on disk — mismatched/missing bytes (e.g. the
-        // staging file was cleared) fall back to a full, correct restart.
-        val resumeOffset = resumeFromBytes.takeIf { it > 0L && destination.length() == it } ?: 0L
 
         try {
             while (true) {
@@ -77,33 +72,13 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
                 // even when it also resolves to public ones).
                 checkDestination(currentUrl)
 
-                connection = open(currentUrl, resumeOffset)
+                connection = open(currentUrl)
                 val status = connection.responseCode
 
                 when {
-                    // 206 = the server honored Range and is sending only the
-                    // remainder — append. 200 despite asking for a Range =
-                    // the server doesn't support resuming and is sending the
-                    // WHOLE file again — must overwrite, or the file would
-                    // be corrupted by a duplicated prefix.
                     status in 200..299 -> {
-                        val append = resumeOffset > 0L && status == HttpURLConnection.HTTP_PARTIAL
-                        val result = copyBody(
-                            connection,
-                            destination,
-                            append = append,
-                            alreadyOnDisk = if (append) resumeOffset else 0L,
-                            onProgress = onProgress,
-                        )
+                        val result = copyBody(connection, destination, onProgress)
                         return@withContext result
-                    }
-                    // The server says there is nothing beyond what we asked
-                    // for — the file on disk is already the complete file.
-                    // java.net.HttpURLConnection has no named constant for 416.
-                    status == HTTP_RANGE_NOT_SATISFIABLE && resumeOffset > 0L -> {
-                        val size = destination.length()
-                        onProgress(DownloadProgress(downloadedBytes = size, totalBytes = size))
-                        return@withContext DownloadFileResult(bytesDownloaded = size, contentType = connection.contentType)
                     }
                     status in 300..399 -> {
                         redirects += 1
@@ -163,40 +138,27 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
      * real HttpURLConnection; tests substitute scripted responses to prove
      * the policy gate runs before EVERY hop (M-1).
      */
-    protected open fun open(url: String, resumeFromBytes: Long = 0L): HttpURLConnection {
+    protected open fun open(url: String): HttpURLConnection {
         val parsed = URL(url)
         val conn = parsed.openConnection() as HttpURLConnection
         conn.connectTimeout = CONNECT_TIMEOUT_MS
         conn.readTimeout = READ_TIMEOUT_MS
         conn.instanceFollowRedirects = false // redirects handled + validated here
         conn.setRequestProperty("User-Agent", "NarcicTub/0.1.0")
-        if (resumeFromBytes > 0L) conn.setRequestProperty("Range", "bytes=$resumeFromBytes-")
         return conn
     }
 
-    /**
-     * [append]/[alreadyOnDisk] carry the resume decision made by the caller:
-     * a fresh download truncates and starts at 0 (unchanged prior
-     * behavior); a resumed one appends and starts counting from the bytes
-     * already on disk, so [onProgress] and the returned total always
-     * reflect the file's real, full size.
-     */
     private suspend fun copyBody(
         connection: HttpURLConnection,
         destination: File,
-        append: Boolean,
-        alreadyOnDisk: Long,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadFileResult {
-        // On a 206 the server reports the length of the REMAINDER only;
-        // the real total is what's already on disk plus that remainder.
-        val remaining = connection.contentLengthLong.let { if (it > 0) it else null }
-        val totalBytes = remaining?.let { alreadyOnDisk + it }
+        val totalBytes = connection.contentLengthLong.let { if (it > 0) it else null }
         val contentType = connection.contentType
 
-        var written = alreadyOnDisk
+        var written = 0L
         connection.inputStream.use { input ->
-            FileOutputStream(destination, append).use { output ->
+            FileOutputStream(destination).use { output ->
                 val buffer = ByteArray(BUFFER_SIZE)
                 var sinceProgress = 0
                 while (true) {
@@ -228,6 +190,5 @@ open class HttpUrlConnectionDownloader @Inject constructor() : FileDownloader {
         private const val MAX_REDIRECTS = 5
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 30_000
-        private const val HTTP_RANGE_NOT_SATISFIABLE = 416
     }
 }

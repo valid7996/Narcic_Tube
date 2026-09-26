@@ -6,8 +6,9 @@ import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
-import com.narcictub.app.domain.usecase.SetClipboardWatcherEnabledUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
+import com.narcictub.app.domain.usecase.SetWhatsappStatusFolderUseCase
+import com.narcictub.app.domain.usecase.SetCustomDownloadFolderUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -32,8 +33,9 @@ import kotlinx.coroutines.launch
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val downloadLocation: DownloadLocation = DownloadLocation.DOWNLOADS,
+    val customFolderUri: String? = null,
+    val whatsappStatusFolderUri: String? = null,
     val concurrentDownloads: Int = AppSettings.MIN_CONCURRENT_DOWNLOADS,
-    val clipboardWatcherEnabled: Boolean = false,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
 )
@@ -43,8 +45,9 @@ class SettingsViewModel @Inject constructor(
     observeSettings: ObserveSettingsUseCase,
     private val setThemeMode: SetThemeModeUseCase,
     private val setDownloadLocation: SetDownloadLocationUseCase,
+    private val setCustomDownloadFolder: SetCustomDownloadFolderUseCase,
+    private val setWhatsappStatusFolder: SetWhatsappStatusFolderUseCase,
     private val setConcurrentDownloads: SetConcurrentDownloadsUseCase,
-    private val setClipboardWatcherEnabled: SetClipboardWatcherEnabledUseCase,
 ) : ViewModel() {
 
     /** One-shot safe message for a failed write; cleared on the next success. */
@@ -65,8 +68,9 @@ class SettingsViewModel @Inject constructor(
             SettingsUiState(
                 themeMode = settings.theme,
                 downloadLocation = settings.downloadLocation,
+                customFolderUri = settings.customDownloadFolderUri,
+                whatsappStatusFolderUri = settings.whatsappStatusFolderUri,
                 concurrentDownloads = settings.concurrentDownloads,
-                clipboardWatcherEnabled = settings.clipboardWatcherEnabled,
                 isLoading = false,
             )
         }
@@ -93,16 +97,16 @@ class SettingsViewModel @Inject constructor(
     fun onDownloadLocationSelected(location: DownloadLocation) =
         launchWrite { setDownloadLocation(location) }
 
+    /**
+     * Persists the picked SAF folder (null clears it). The persistable grant
+     * is taken by the screen before this is called.
+     */
+    fun onCustomFolderSelected(uri: String?) = launchWrite { setCustomDownloadFolder(uri) }
+
+    fun onWhatsappFolderSelected(uri: String?) = launchWrite { setWhatsappStatusFolder(uri) }
+
     /** Out-of-range values are rejected by the use case — safe message only. */
     fun onConcurrentDownloadsSelected(count: Int) = launchWrite { setConcurrentDownloads(count) }
-
-    /**
-     * The overlay-permission check/request lives in the screen (it needs a
-     * Context/Activity); this only ever persists what the user chose.
-     * [enabled] must already reflect a permission check the caller made —
-     * this use case does not gate on it.
-     */
-    fun onClipboardWatcherToggled(enabled: Boolean) = launchWrite { setClipboardWatcherEnabled(enabled) }
 
     private fun launchWrite(write: suspend () -> Result<Unit>) {
         viewModelScope.launch {

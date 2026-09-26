@@ -6,14 +6,16 @@
         <item name="android:windowBackground">@null</item>
     </style>
 
-    <!-- ShareTrampolineActivity only: fully invisible so it never flashes
-         app UI in front of the app the user shared FROM. -->
-    <style name="Theme.NarcicTub.Transparent" parent="android:Theme.Translucent.NoTitleBar">
+    <!-- Share-target dialog: a small floating window OVER the sharing app.
+         Translucent + dimmed backdrop; sized to its (compact) content.
+         Dot notation makes it inherit Theme.NarcicTub. -->
+    <style name="Theme.NarcicTub.ShareDialog">
+        <item name="android:windowIsFloating">true</item>
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowCloseOnTouchOutside">true</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowAnimationStyle">@null</item>
-        <item name="android:windowIsFloating">true</item>
-        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
     </style>
 </resources>

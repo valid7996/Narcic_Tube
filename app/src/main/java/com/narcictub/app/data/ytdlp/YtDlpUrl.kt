@@ -25,6 +25,13 @@ internal object YtDlpUrl {
     private val YOUTUBE_HOSTS = setOf(
         "youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be",
     )
+    private val TIKTOK_HOSTS = setOf("tiktok.com")
+    private val TWITTER_HOSTS = setOf("twitter.com", "x.com")
+    private val FACEBOOK_HOSTS = setOf("facebook.com", "fb.com", "fb.watch")
+    private val PINTEREST_HOSTS = setOf("pinterest.com", "pin.it")
+    private val SNAPCHAT_HOSTS = setOf("snapchat.com")
+    private val SOUNDCLOUD_HOSTS = setOf("soundcloud.com")
+    private val SPOTIFY_HOSTS = setOf("spotify.com")
 
     private const val FRAGMENT_PREFIX = "nt-f="
 
@@ -50,6 +57,13 @@ internal object YtDlpUrl {
         return when {
             host in YOUTUBE_HOSTS || host.endsWith(".youtube.com") -> MediaProvider.YOUTUBE
             host == "instagram.com" || host.endsWith(".instagram.com") -> MediaProvider.INSTAGRAM
+            host in TIKTOK_HOSTS || host.endsWith(".tiktok.com") -> MediaProvider.TIKTOK
+            host in TWITTER_HOSTS || host.endsWith(".twitter.com") || host.endsWith(".x.com") -> MediaProvider.TWITTER
+            host in FACEBOOK_HOSTS || host.endsWith(".facebook.com") || host.endsWith(".fb.com") || host == "fb.watch" -> MediaProvider.FACEBOOK
+            host in PINTEREST_HOSTS || host.endsWith(".pinterest.com") || host == "pin.it" -> MediaProvider.PINTEREST
+            host in SNAPCHAT_HOSTS || host.endsWith(".snapchat.com") -> MediaProvider.SNAPCHAT
+            host in SOUNDCLOUD_HOSTS || host.endsWith(".soundcloud.com") -> MediaProvider.SOUNDCLOUD
+            host in SPOTIFY_HOSTS || host.endsWith(".spotify.com") -> MediaProvider.SPOTIFY
             else -> MediaProvider.UNKNOWN
         }
     }

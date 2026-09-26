@@ -10,7 +10,6 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
@@ -50,30 +49,6 @@ class HomeViewModelTest {
     private class GatedResolver(private val gate: CompletableDeferred<Result<MediaInfo>>) :
         MediaResolver {
         override suspend fun resolve(url: String): Result<MediaInfo> = gate.await()
-    }
-
-    /** PHASE 17: per-call gated resolver to pin share-intake cancellation. */
-    private class QueueResolver : MediaResolver {
-        private val gates = ArrayDeque<CompletableDeferred<Result<MediaInfo>>>()
-        val urls = mutableListOf<String>()
-
-        fun enqueueGate(): CompletableDeferred<Result<MediaInfo>> =
-            CompletableDeferred<Result<MediaInfo>>().also { gates.addLast(it) }
-
-        override suspend fun resolve(url: String): Result<MediaInfo> {
-            urls.add(url)
-            val gate = gates.removeFirstOrNull() ?: CompletableDeferred(
-                Result.success(
-                    MediaInfo(
-                        sourceUrl = url,
-                        title = url.substringAfterLast('/'),
-                        host = "example.com",
-                        isDirectFile = true,
-                    ),
-                ),
-            )
-            return gate.await()
-        }
     }
 
     private class RecordingDownloadRepo : com.narcictub.app.domain.repository.DownloadRepository {
@@ -271,124 +246,6 @@ class HomeViewModelTest {
 
         assertNull(resolver.received)
         assertEquals("That doesn't look like a valid link", vm.uiState.value.validationMessage)
-    }
-
-    // ===== smart auto-resolve (no manual Resolve tap needed) =====
-
-    @Test
-    fun `a valid url resolves itself after the user stops typing`() = runTest {
-        resolver.result = Result.success(directFileInfo("https://example.com/clip.mp4"))
-        val vm = viewModel()
-
-        vm.onUrlChange("https://example.com/clip.mp4")
-        assertEquals("nothing happens before the debounce settles", 0, resolver.callCount)
-
-        advanceUntilIdle()
-
-        assertEquals(1, resolver.callCount)
-        assertEquals("https://example.com/clip.mp4", resolver.received)
-        assertTrue(vm.uiState.value.canDownload)
-    }
-
-    @Test
-    fun `further typing restarts the debounce instead of resolving every keystroke`() = runTest {
-        resolver.result = Result.success(directFileInfo("https://example.com/final.mp4"))
-        val vm = viewModel()
-
-        vm.onUrlChange("https://example.com/f")
-        advanceTimeBy(300)
-        vm.onUrlChange("https://example.com/fi")
-        advanceTimeBy(300)
-        vm.onUrlChange("https://example.com/final.mp4")
-        advanceUntilIdle()
-
-        assertEquals(1, resolver.callCount)
-        assertEquals("https://example.com/final.mp4", resolver.received)
-    }
-
-    @Test
-    fun `a manual resolve that finishes first is not duplicated by the debounce`() = runTest {
-        resolver.result = Result.success(directFileInfo("https://example.com/a.mp4"))
-        val vm = viewModel()
-
-        vm.onUrlChange("https://example.com/a.mp4")
-        vm.onResolve()
-        advanceUntilIdle()
-
-        assertEquals(1, resolver.callCount)
-    }
-
-    @Test
-    fun `clearing the form cancels a pending auto-resolve`() = runTest {
-        val vm = viewModel()
-        vm.onUrlChange("https://example.com/clip.mp4")
-        vm.onClear()
-        advanceUntilIdle()
-
-        assertEquals(0, resolver.callCount)
-    }
-
-    // ===== smart clipboard suggestion =====
-
-    @Test
-    fun `a new supported link on the clipboard is offered as a suggestion`() = runTest {
-        val vm = viewModel()
-        vm.onClipboardTextObserved("https://youtu.be/abc123")
-
-        assertEquals("https://youtu.be/abc123", vm.uiState.value.clipboardSuggestion)
-    }
-
-    @Test
-    fun `unsupported clipboard text is not suggested`() = runTest {
-        val vm = viewModel()
-        vm.onClipboardTextObserved("just some notes, not a link")
-
-        assertNull(vm.uiState.value.clipboardSuggestion)
-    }
-
-    @Test
-    fun `the same clip is never suggested twice`() = runTest {
-        val vm = viewModel()
-        vm.onClipboardTextObserved("https://youtu.be/abc123")
-        vm.onClipboardSuggestionDismissed()
-        vm.onClipboardTextObserved("https://youtu.be/abc123")
-
-        assertNull(vm.uiState.value.clipboardSuggestion)
-    }
-
-    @Test
-    fun `a clip matching the url already in the field is not suggested`() = runTest {
-        val vm = viewModel()
-        vm.onUrlChange("https://youtu.be/abc123")
-        vm.onClipboardTextObserved("https://youtu.be/abc123")
-
-        assertNull(vm.uiState.value.clipboardSuggestion)
-    }
-
-    @Test
-    fun `accepting the clipboard suggestion fills the field and resolves immediately`() = runTest {
-        resolver.result = Result.success(directFileInfo("https://example.com/clip.mp4"))
-        val vm = viewModel()
-        vm.onClipboardTextObserved("https://example.com/clip.mp4")
-
-        vm.onClipboardSuggestionAccepted()
-        advanceUntilIdle()
-
-        assertEquals("https://example.com/clip.mp4", vm.uiState.value.url)
-        assertNull(vm.uiState.value.clipboardSuggestion)
-        assertTrue(vm.uiState.value.canDownload)
-    }
-
-    @Test
-    fun `dismissing the clipboard suggestion only clears the suggestion`() = runTest {
-        val vm = viewModel()
-        vm.onClipboardTextObserved("https://youtu.be/abc123")
-
-        vm.onClipboardSuggestionDismissed()
-
-        assertNull(vm.uiState.value.clipboardSuggestion)
-        assertEquals("", vm.uiState.value.url)
-        assertEquals(0, resolver.callCount)
     }
 
     @Test
@@ -672,46 +529,6 @@ class HomeViewModelTest {
         assertTrue("direct links keep the plain enqueue path", downloadRepo.titles.isEmpty())
     }
 
-    @Test
-    fun `shared url cancels an in-flight resolve and resolves the new url`() = runTest {
-        val gated = QueueResolver()
-        val gate1 = gated.enqueueGate()
-        val vm = HomeViewModel(
-            resolveUrl = ResolveUrlUseCase(gated),
-            enqueueDownload = EnqueueDownloadUseCase(downloadRepo),
-        )
-        vm.onUrlChange("https://example.com/first.mp4")
-        vm.onResolve()
-        testScheduler.runCurrent() // first resolve is now in flight
-        assertEquals(listOf("https://example.com/first.mp4"), gated.urls)
-
-        // The share arrives while the first resolve is still running.
-        vm.onSharedUrlReceived("https://example.com/second.mp4")
-        advanceUntilIdle()
-
-        // First resolve was cancelled before completing; the shared URL
-        // resolved exactly once and its real metadata landed.
-        assertEquals(
-            listOf("https://example.com/first.mp4", "https://example.com/second.mp4"),
-            gated.urls,
-        )
-        assertFalse(vm.uiState.value.isResolving)
-        assertNull(vm.uiState.value.errorMessage)
-        assertEquals("second.mp4", vm.uiState.value.resolvedMedia?.title)
-        assertEquals("https://example.com/second.mp4", vm.uiState.value.url)
-        assertTrue(gate1.isActive || gate1.isCompleted) // no crash either way
-    }
-
-    @Test
-    fun `share rejection surfaces a safe message without touching the form`() = runTest {
-        val vm = viewModel()
-        vm.onUrlChange("https://example.com/keep.mp4")
-        vm.onShareRejected("The shared text doesn't contain a supported link.")
-
-        assertEquals("The shared text doesn't contain a supported link.", vm.uiState.value.errorMessage)
-        assertEquals("https://example.com/keep.mp4", vm.uiState.value.url)
-    }
-
     // ===== Phase 20: variant selection + download integration =====
 
     private fun variant(
@@ -871,7 +688,8 @@ class HomeViewModelTest {
         assertEquals("https://example.com/a-1080.mp4", vm.uiState.value.selectedVariantUrl)
 
         resolver.result = Result.success(mediaB)
-        vm.onSharedUrlReceived("https://example.com/b-source")
+        vm.onUrlChange("https://example.com/b-source")
+        vm.onResolve()
         advanceUntilIdle()
 
         assertEquals("selection now belongs to B", "https://example.com/b-source", vm.uiState.value.selectedVariantUrl)

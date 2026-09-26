@@ -40,12 +40,6 @@ class NavigationRouteTest {
     }
 
     @Test
-    fun `history route round trips`() {
-        val decoded = json.decodeFromString<Destination.History>(json.encodeToString(Destination.History))
-        assertEquals(Destination.History, decoded)
-    }
-
-    @Test
     fun `settings route round trips`() {
         val decoded = json.decodeFromString<Destination.Settings>(json.encodeToString(Destination.Settings))
         assertEquals(Destination.Settings, decoded)

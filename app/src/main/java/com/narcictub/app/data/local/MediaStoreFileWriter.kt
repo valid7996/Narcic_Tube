@@ -3,11 +3,11 @@ package com.narcictub.app.data.local
 import android.content.Context
 import android.net.Uri
 import android.os.Build
-import com.narcictub.app.domain.DownloadLocationPolicy
 import com.narcictub.app.domain.FileNameSanitizer
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -62,29 +62,73 @@ open class MediaStoreFileWriter @Inject constructor(
         mimeType: String?,
         subDirectory: String?,
     ): Uri = withContext(Dispatchers.IO) {
-        val settingsLocation = settingsRepository.settings.first().downloadLocation
-        // Video/audio always goes to the matching system collection (so it
-        // shows up in the phone's own Gallery/Video and Music apps) —
-        // regardless of the manual Settings choice, which only governs
-        // everything else. See DownloadLocationPolicy.
-        val location = DownloadLocationPolicy.effectiveLocation(mimeType, settingsLocation)
+        val settings = settingsRepository.settings.first()
         val safeName = FileNameSanitizer.sanitize(
             displayName,
             fallback = stagingFile.nameWithoutExtension.ifEmpty { "download" },
         )
-        // Every destination gets its own app-named subfolder — never a bare
-        // file loose in the user's shared collection. A caller-supplied
-        // subDirectory (tests, future overrides) still wins when given.
-        val effectiveSubDirectory = subDirectory ?: DownloadLocationPolicy.relativePath(location)
+        // Custom folder override first (any API level). If it can no longer
+        // be written (grant revoked, folder removed, name collision policy),
+        // fall back to the platform path — the download must not die because
+        // of the override.
+        settings.customDownloadFolderUri?.let { treeUriText ->
+            try {
+                return@withContext publishViaSaf(treeUriText, stagingFile, safeName, mimeType)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // fall through to the platform publishers below
+            }
+        }
         if (deviceSdkInt() >= Build.VERSION_CODES.Q) {
-            publishViaQPlus(location, stagingFile, safeName, mimeType, effectiveSubDirectory)
+            publishViaQPlus(
+                settings.downloadLocation,
+                stagingFile,
+                safeName,
+                mimeType,
+                // Default: an app-named subfolder of the chosen collection
+                // (Downloads/NarcicTub, Music/NarcicTub, …) instead of the
+                // collection root — callers that pass an explicit relative
+                // path keep theirs.
+                subDirectory ?: defaultSubDirectory(settings.downloadLocation),
+            )
         } else {
-            publishViaLegacy(location, stagingFile, safeName)
+            publishViaLegacy(settings.downloadLocation, stagingFile, safeName)
         }
     }
 
     /** Device API level — seam for tests pinning the 26–28 vs 29+ split. */
     protected open fun deviceSdkInt(): Int = Build.VERSION.SDK_INT
+
+    /**
+     * App-named subfolder of the chosen collection — literal platform
+     * directory segments (stable names, never user content). The actual
+     * relative-path column reference lives only in the Q+ publisher.
+     */
+    private fun defaultSubDirectory(location: DownloadLocation): String = when (location) {
+        DownloadLocation.DOWNLOADS -> "Download/NarcicTub"
+        DownloadLocation.MUSIC -> "Music/NarcicTub"
+        DownloadLocation.MOVIES -> "Movies/NarcicTub"
+        DownloadLocation.DCIM -> "DCIM/NarcicTub"
+    }
+
+    /**
+     * Custom-folder path (SAF document tree, any API level). Takes the raw
+     * persisted URI string — parsing stays inside the production seam so JVM
+     * tests can intercept without touching android.net.Uri statics.
+     */
+    protected open fun publishViaSaf(
+        treeUriText: String,
+        stagingFile: File,
+        safeName: String,
+        mimeType: String?,
+    ): Uri = SafFolderPublisher.publish(
+        resolver = context.contentResolver,
+        treeUri = Uri.parse(treeUriText),
+        stagingFile = stagingFile,
+        safeName = safeName,
+        mimeType = mimeType,
+    )
 
     /**
      * API 29+ path. Delegates to [QPlusMediaStorePublisher]; the Q-only

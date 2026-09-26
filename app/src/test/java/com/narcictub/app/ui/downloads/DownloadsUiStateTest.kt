@@ -261,34 +261,13 @@ class DownloadsUiStateTest {
     }
 
     @Test
-    fun `cancel action is offered for queued, downloading and paused rows`() {
+    fun `cancel action is offered only where a live job exists`() {
         assertTrue(offersCancelAction(DownloadStatus.QUEUED))
         assertTrue(offersCancelAction(DownloadStatus.DOWNLOADING))
-        // PAUSED has no live job, but the repository still supports fully
-        // abandoning a paused row without first resuming it.
-        assertTrue(offersCancelAction(DownloadStatus.PAUSED))
+        // PAUSED is vestigial — no live job, so no inert cancel button.
+        assertFalse(offersCancelAction(DownloadStatus.PAUSED))
         assertFalse(offersCancelAction(DownloadStatus.COMPLETED))
         assertFalse(offersCancelAction(DownloadStatus.FAILED))
         assertFalse(offersCancelAction(DownloadStatus.CANCELLED))
-    }
-
-    @Test
-    fun `pause action is offered only for a live transfer`() {
-        assertTrue(offersPauseAction(DownloadStatus.QUEUED))
-        assertTrue(offersPauseAction(DownloadStatus.DOWNLOADING))
-        assertFalse(offersPauseAction(DownloadStatus.PAUSED))
-        assertFalse(offersPauseAction(DownloadStatus.COMPLETED))
-        assertFalse(offersPauseAction(DownloadStatus.FAILED))
-        assertFalse(offersPauseAction(DownloadStatus.CANCELLED))
-    }
-
-    @Test
-    fun `resume action is offered only for a paused row`() {
-        assertTrue(offersResumeAction(DownloadStatus.PAUSED))
-        assertFalse(offersResumeAction(DownloadStatus.QUEUED))
-        assertFalse(offersResumeAction(DownloadStatus.DOWNLOADING))
-        assertFalse(offersResumeAction(DownloadStatus.COMPLETED))
-        assertFalse(offersResumeAction(DownloadStatus.FAILED))
-        assertFalse(offersResumeAction(DownloadStatus.CANCELLED))
     }
 }

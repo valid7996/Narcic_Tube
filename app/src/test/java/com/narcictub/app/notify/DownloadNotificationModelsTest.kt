@@ -150,7 +150,7 @@ class DownloadNotificationModelsTest {
     @Test
     fun `snapshot title is the fixed app name`() {
         val snapshot = DownloadNotifications.build(7, item(DownloadStatus.DOWNLOADING), null)!!
-        assertEquals("NarcicTub", snapshot.title)
+        assertEquals("Narcic Tube", snapshot.title)
     }
 
     // ===== throttling =====
@@ -245,5 +245,29 @@ class DownloadNotificationModelsTest {
             NotificationAction.POST_OR_UPDATE,
             DownloadNotifications.decide(seenBefore = true, snapshot = snapshot),
         )
+    }
+
+    // ===== foreground service stop condition =====
+
+    @Test
+    fun `queued downloading and paused rows keep the process alive`() {
+        for (status in listOf(
+            DownloadStatus.QUEUED,
+            DownloadStatus.DOWNLOADING,
+            DownloadStatus.PAUSED,
+        )) {
+            assertTrue("$status must count as in flight", DownloadNotifications.isInFlight(status))
+        }
+    }
+
+    @Test
+    fun `terminal rows release the foreground service`() {
+        for (status in listOf(
+            DownloadStatus.COMPLETED,
+            DownloadStatus.FAILED,
+            DownloadStatus.CANCELLED,
+        )) {
+            assertFalse("$status must not count as in flight", DownloadNotifications.isInFlight(status))
+        }
     }
 }

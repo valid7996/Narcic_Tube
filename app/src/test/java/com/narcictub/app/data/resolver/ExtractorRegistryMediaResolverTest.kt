@@ -1,4 +1,5 @@
 package com.narcictub.app.data.resolver
+import com.narcictub.app.data.resolver.InstagramPhotoResolver
 
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaProvider
@@ -119,7 +120,7 @@ class ExtractorRegistryMediaResolverTest {
         val direct = FakeExtractor("youtube", Result.success(info("youtube.com")))
         // Registration order deliberately reversed: priority (100 > 0) must
         // make the yt-dlp extractor win regardless of registration order.
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(direct, YtDlpExtractor(engine)))
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(direct, YtDlpExtractor(engine, InstagramPhotoResolver(mockk(relaxed = true)))))
 
         val result = registry.resolve("https://www.youtube.com/watch?v=abc123")
 
@@ -132,7 +133,7 @@ class ExtractorRegistryMediaResolverTest {
     fun `instagram urls route to the yt-dlp extractor`() = runTest {
         val engine = mockk<YtDlpEngine>()
         coEvery { engine.dumpJson(any()) } returns YtDlpSamples.YOUTUBE
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine)))
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine, InstagramPhotoResolver(mockk(relaxed = true)))))
 
         val result = registry.resolve("https://www.instagram.com/reel/Cabc123/")
 
@@ -145,7 +146,7 @@ class ExtractorRegistryMediaResolverTest {
         val engine = mockk<YtDlpEngine>()
         coEvery { engine.dumpJson(any()) } returns YtDlpSamples.YOUTUBE
         val direct = FakeExtractor("example.com", Result.success(info("example.com")))
-        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine), direct))
+        val registry = ExtractorRegistryMediaResolver(linkedSetOf(YtDlpExtractor(engine, InstagramPhotoResolver(mockk(relaxed = true))), direct))
 
         val result = registry.resolve("https://cdn.example.com/clip.mp4")
 

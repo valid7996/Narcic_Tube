@@ -21,7 +21,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -71,6 +71,29 @@ class SettingsRepositoryImplTest {
     }
 
     @Test
+    fun `custom download folder round-trips`() = testScope.runTest {
+        val repository = newRepository()
+        val uri = "content://com.android.externalstorage.documents/tree/primary%3ADownload/Foo"
+        repository.setCustomDownloadFolder(uri)
+        assertEquals(uri, repository.settings.first().customDownloadFolderUri)
+    }
+
+    @Test
+    fun `custom download folder clears back to null`() = testScope.runTest {
+        val repository = newRepository()
+        repository.setCustomDownloadFolder("content://com.android.externalstorage.documents/tree/x")
+        repository.setCustomDownloadFolder(null)
+        assertNull(repository.settings.first().customDownloadFolderUri)
+    }
+
+    @Test
+    fun `blank custom download folder is stored as unset`() = testScope.runTest {
+        val repository = newRepository()
+        repository.setCustomDownloadFolder("   ")
+        assertNull(repository.settings.first().customDownloadFolderUri)
+    }
+
+    @Test
     fun `wifi-only round-trips`() = testScope.runTest {
         val repository = newRepository()
         repository.setWifiOnly(false)
@@ -82,16 +105,6 @@ class SettingsRepositoryImplTest {
         val repository = newRepository()
         repository.setNotificationsEnabled(false)
         assertFalse(repository.settings.first().notificationsEnabled)
-    }
-
-    @Test
-    fun `clipboard watcher round-trips and defaults to disabled`() = testScope.runTest {
-        val repository = newRepository()
-        assertFalse(repository.settings.first().clipboardWatcherEnabled)
-        repository.setClipboardWatcherEnabled(true)
-        assertTrue(repository.settings.first().clipboardWatcherEnabled)
-        repository.setClipboardWatcherEnabled(false)
-        assertFalse(repository.settings.first().clipboardWatcherEnabled)
     }
 
     @Test
@@ -114,7 +127,6 @@ class SettingsRepositoryImplTest {
         assertEquals(true, defaults.wifiOnly)
         assertEquals(3, defaults.concurrentDownloads)
         assertEquals(true, defaults.notificationsEnabled)
-        assertEquals(false, defaults.clipboardWatcherEnabled)
     }
 
     @Test

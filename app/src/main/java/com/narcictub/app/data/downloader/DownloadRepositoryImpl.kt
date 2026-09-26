@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.Uri
 import com.narcictub.app.data.local.MediaFileChecker
 import com.narcictub.app.data.local.MediaStoreFileWriter
-import com.narcictub.app.data.ytdlp.YtDlpFileDownloader
-import com.narcictub.app.data.ytdlp.YtDlpMime
 import com.narcictub.app.domain.downloader.DownloadException
 import com.narcictub.app.domain.downloader.FileDownloader
 import com.narcictub.app.domain.model.DownloadProgress
@@ -17,6 +15,7 @@ import com.narcictub.app.domain.FileNameSanitizer
 import com.narcictub.app.domain.repository.DownloadRepository
 import com.narcictub.app.domain.repository.HistoryRepository
 import com.narcictub.app.domain.repository.SettingsRepository
+import com.narcictub.app.notify.DownloadForegroundService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -89,14 +88,6 @@ open class DownloadRepositoryImpl @Inject constructor(
     private val retryingIds = mutableSetOf<Long>()
 
     /**
-     * Ids whose in-flight job.cancel() was initiated by [pause], not
-     * [cancel]. Consumed (removed) by the job's own cancellation handler,
-     * which is the only place that can tell PAUSED and CANCELLED apart —
-     * both start as the exact same coroutine cancellation.
-     */
-    private val pausingIds = mutableSetOf<Long>()
-
-    /**
      * Recovery boundary (Phase 7 fix round, Qwen finding 3): wall clock
      * captured once at construction — effectively process start, since this
      * singleton is created during Application.onCreate before any UI exists.
@@ -121,30 +112,23 @@ open class DownloadRepositoryImpl @Inject constructor(
     override suspend fun enqueue(sourceUrl: String, durationSeconds: Long?): Long =
         enqueueTitled(sourceUrl, durationSeconds, title = null)
 
-    override suspend fun enqueueTitled(
-        sourceUrl: String,
-        durationSeconds: Long?,
-        title: String?,
-        mimeType: String?,
-    ): Long {
+    override suspend fun enqueueTitled(sourceUrl: String, durationSeconds: Long?, title: String?): Long {
         val id = historyRepository.add(
             HistoryItem(
                 sourceUrl = sourceUrl,
                 // A real resolver title (YouTube/Instagram) wins; direct links
                 // keep the URL-derived name exactly as before.
                 title = displayTitleFor(title) ?: FileNameSanitizer.fromUrl(sourceUrl) ?: "download",
-                // Early classification hint (from the resolved variant) so the
-                // finished file can be routed to Movies/Music even if the
-                // live download response doesn't repeat a usable Content-Type.
-                // The real, server-observed type still overwrites this at
-                // commit time (see the DOWNLOADING→COMPLETED commit below).
-                mimeType = mimeType?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() },
                 status = DownloadStatus.QUEUED,
                 createdAt = Instant.now(),
                 // PHASE 22: the real resolved duration travels with the row.
                 durationSeconds = durationSeconds,
             ),
         )
+        // Keep the process alive for the transfer (background download):
+        // without the foreground service an empty process — e.g. right after
+        // the share dialog is dismissed — is killed along with the queue.
+        ensureForegroundServiceRunning()
         synchronized(this) { waitingIds.addLast(id) }
         workScope.launch { pumpQueue() }
         return id
@@ -162,55 +146,14 @@ open class DownloadRepositoryImpl @Inject constructor(
             historyRepository.updateStatus(id, DownloadStatus.CANCELLED)
             _progress.update { it - id }
         } else {
-            // Race fallback / PAUSED: no live job and not in the wait queue —
-            // covers a still-QUEUED row from a race, and a PAUSED row (which
-            // by definition has no active job to cancel). Either way, any
-            // partial bytes left on disk from an in-flight or paused attempt
-            // are cleaned up — a genuine cancel never resumes.
+            // Race fallback: a row may still be QUEUED in DB (e.g. process
+            // restarted mid-queue) — flip it if untouched.
             val item = runCatching { historyRepository.get(id) }.getOrNull()
-            if (item != null && (item.status == DownloadStatus.QUEUED || item.status == DownloadStatus.PAUSED)) {
+            if (item != null && item.status == DownloadStatus.QUEUED) {
                 historyRepository.updateStatus(id, DownloadStatus.CANCELLED)
                 _progress.update { it - id }
-                cleanupStagingFor(id)
             }
         }
-    }
-
-    /**
-     * Pauses a QUEUED or DOWNLOADING item. Cancelling its job is the same
-     * mechanism [cancel] uses — [pausingIds] is how the job's own
-     * cancellation handler (in [pumpQueue]/[runDownload]) tells a pause
-     * apart from a real cancel, so it keeps the partial staging file
-     * instead of deleting it.
-     */
-    override suspend fun pause(id: Long) {
-        val item = historyRepository.get(id) ?: return
-        if (item.status != DownloadStatus.DOWNLOADING && item.status != DownloadStatus.QUEUED) return
-        val job = synchronized(this) { activeJobs[id] }
-        if (job != null) {
-            synchronized(this) { pausingIds.add(id) }
-            job.cancel()
-            return
-        }
-        // Still waiting for a permit, no job launched yet: park it directly
-        // — there are no partial bytes to preserve.
-        val removed = synchronized(this) { waitingIds.remove(id) }
-        if (removed) {
-            historyRepository.updateStatus(id, DownloadStatus.PAUSED)
-        }
-    }
-
-    /**
-     * Resumes a PAUSED item by simply re-queuing it: [runDownload] itself
-     * detects and continues from any bytes [pause] left on the staging
-     * file (see there) — no special "resume" code path is needed here.
-     */
-    override suspend fun resume(id: Long) {
-        val item = historyRepository.get(id) ?: return
-        if (item.status != DownloadStatus.PAUSED) return
-        historyRepository.updateStatus(id, DownloadStatus.QUEUED)
-        synchronized(this) { waitingIds.addLast(id) }
-        workScope.launch { pumpQueue() }
     }
 
     override suspend fun retry(id: Long): Long? {
@@ -302,7 +245,7 @@ open class DownloadRepositoryImpl @Inject constructor(
                 DownloadStatus.FAILED,
                 errorMessage = RECOVERED_MESSAGE,
             )
-            cleanupStagingFor(item.id)
+            runCatching { stagingFileFor(item.id).delete() }
             _progress.update { it - item.id }
         }
         return interrupted.size
@@ -394,22 +337,10 @@ open class DownloadRepositoryImpl @Inject constructor(
                 try {
                     semaphore.withPermit { runDownload(id) }
                 } catch (e: CancellationException) {
-                    // Only two ways to land here: (a) cancelled while still
-                    // waiting for a permit — runDownload never started, no
-                    // staging file exists yet, this IS the authoritative
-                    // handler; or (b) runDownload's own catch already
-                    // handled a mid-transfer pause/cancel and re-threw —
-                    // pausingIds is already consumed there, and
-                    // markPausedIfInFlight/markCancelledIfInFlight's status
-                    // guard makes this a safe no-op (also true after a
-                    // finished commit, per the L-1 guard below).
-                    withContext(NonCancellable) {
-                        if (synchronized(this@DownloadRepositoryImpl) { pausingIds.remove(id) }) {
-                            markPausedIfInFlight(id)
-                        } else {
-                            markCancelledIfInFlight(id)
-                        }
-                    }
+                    // Cancelled while waiting for the permit (no staging file
+                    // exists yet) — or after a finished commit (L-1 guard
+                    // below refuses the downgrade in that case).
+                    withContext(NonCancellable) { markCancelledIfInFlight(id) }
                     _progress.update { it - id }
                 }
             }
@@ -430,38 +361,17 @@ open class DownloadRepositoryImpl @Inject constructor(
         }
     }
 
-    /** Same guard as [markCancelledIfInFlight], writing PAUSED instead. */
-    private suspend fun markPausedIfInFlight(id: Long) {
-        val status = runCatching { historyRepository.get(id)?.status }.getOrNull()
-        if (status == null || status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING) {
-            runCatching { historyRepository.updateStatus(id, DownloadStatus.PAUSED) }
-        }
-    }
-
-    /** Deletes a row's staging file AND any yt-dlp working directory left beside it. */
-    private fun cleanupStagingFor(id: Long) {
-        val stagingFile = stagingFileFor(id)
-        runCatching { stagingFile.delete() }
-        runCatching { YtDlpFileDownloader.workDirFor(stagingFile).deleteRecursively() }
-    }
-
     private suspend fun runDownload(id: Long) {
         val item = historyRepository.get(id) ?: return
         if (item.status != DownloadStatus.QUEUED) return
 
         historyRepository.updateStatus(id, DownloadStatus.DOWNLOADING)
+        _progress.update { it + (id to DownloadProgress(downloadedBytes = 0, totalBytes = null)) }
 
         val stagingFile = stagingFileFor(id)
-        // A prior PAUSED attempt at this same id deliberately kept whatever
-        // bytes had already landed on disk (see pause()) — continue from
-        // there. A brand-new row simply has no staging file yet (0).
-        val resumeFromBytes = stagingFile.length()
-        _progress.update {
-            it + (id to DownloadProgress(downloadedBytes = resumeFromBytes, totalBytes = null))
-        }
 
         try {
-            val result = downloader.download(item.sourceUrl, stagingFile, resumeFromBytes) { p ->
+            val result = downloader.download(item.sourceUrl, stagingFile) { p ->
                 _progress.update { it + (id to p) }
             }
 
@@ -481,31 +391,23 @@ open class DownloadRepositoryImpl @Inject constructor(
                 // yt-dlp decides the container, so its extension is appended to
                 // the (extension-less) title; plain downloads are unchanged.
                 val displayName = withExtension(item.fileName ?: item.title, result.fileExtension)
-                // PHASE 10 contract, unchanged: what's STORED/DISPLAYED as the
-                // history record's type is a real, observed signal only —
-                // the live response when it's there, else what the resolver
-                // already identified at enqueue time (item.mimeType) — NEVER
-                // a guess from the file extension.
-                val observedMimeType = result.contentType
-                    ?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
-                    ?: item.mimeType
-                // Movies/Music ROUTING can afford to be best-effort where the
-                // history record can't: a wrong guess only lands the file in
-                // the wrong folder, never puts a false claim in front of the
-                // user. So routing alone also tries the real file extension.
-                val routingMimeHint = observedMimeType
-                    ?: YtDlpMime.forDownloadedFile(File(displayName).extension)
                 val published = mediaStoreWriter.publish(
                     stagingFile = stagingFile,
                     displayName = displayName,
-                    mimeType = routingMimeHint,
+                    mimeType = result.contentType,
                 )
 
                 historyRepository.updateLocalUri(id, published.toString())
                 historyRepository.updateSizeBytes(id, result.bytesDownloaded)
-                // PHASE 10: persist the real (observed-only) type so history
-                // shows the actual format — see observedMimeType above.
-                historyRepository.updateMimeType(id, observedMimeType)
+                // PHASE 10: persist the real server-declared type so history
+                // can show the actual format — normalized the same way the
+                // Phase 8 resolver parses headers (strip parameters, trim,
+                // lowercase); empty/absent stays null, never a guess.
+                historyRepository.updateMimeType(
+                    id,
+                    result.contentType
+                        ?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() },
+                )
                 historyRepository.updateStatus(
                     id,
                     DownloadStatus.COMPLETED,
@@ -517,22 +419,10 @@ open class DownloadRepositoryImpl @Inject constructor(
             }
             _progress.update { it - id }
         } catch (e: CancellationException) {
-            // This is where a pause landing MID-TRANSFER is actually caught
-            // (runDownload's own try, not pumpQueue's outer one — that one
-            // only ever sees a cancel that happened before this point was
-            // reached, e.g. still waiting for a permit). Consuming
-            // pausingIds HERE, first, is what makes pumpQueue's later
-            // (outer) catch a safe no-op afterwards — see its comment.
             withContext(NonCancellable) {
-                if (synchronized(this@DownloadRepositoryImpl) { pausingIds.remove(id) }) {
-                    markPausedIfInFlight(id)
-                    // Keep the partial staging file on disk — resume()
-                    // continues the same transfer instead of restarting it.
-                } else {
-                    markCancelledIfInFlight(id)
-                    // Idempotent: the commit path already deleted it on success.
-                    runCatching { stagingFile.delete() }
-                }
+                markCancelledIfInFlight(id)
+                // Idempotent: the commit path already deleted it on success.
+                runCatching { stagingFile.delete() }
             }
             _progress.update { it - id }
             throw e
@@ -571,6 +461,15 @@ open class DownloadRepositoryImpl @Inject constructor(
 
     /** Root of the shared staging directory. Overridable for tests. */
     protected open fun stagingRoot(): File = File(context.cacheDir, STAGING_DIR)
+
+    /**
+     * Starts the download foreground service (idempotent) so an empty
+     * process is never killed mid-transfer. Framework seam — overridden to
+     * a no-op in JVM tests (android.jar methods throw there).
+     */
+    protected open fun ensureForegroundServiceRunning() {
+        DownloadForegroundService.start(context)
+    }
 
     private fun stagingFileFor(id: Long): File =
         File(stagingRoot().apply { mkdirs() }, "narcictub_${id}.part")

@@ -1,4 +1,6 @@
 package com.narcictub.app.data.ytdlp
+import com.narcictub.app.data.resolver.InstagramPhotoResolver
+import io.mockk.mockk
 
 import com.narcictub.app.domain.model.MediaProvider
 import com.narcictub.app.domain.resolver.MediaResolveException
@@ -15,7 +17,7 @@ import org.junit.Test
 class YtDlpExtractorTest {
 
     private val engine = mockk<YtDlpEngine>()
-    private val extractor = YtDlpExtractor(engine)
+    private val extractor = YtDlpExtractor(engine, InstagramPhotoResolver(mockk(relaxed = true)))
 
     @Test
     fun `claims only real youtube and instagram urls`() {

@@ -27,19 +27,11 @@ data class DownloadFileResult(
  *  - reports real progress via [onProgress] (totalBytes null when unknown)
  *  - propagates coroutine cancellation as CancellationException (never wraps it)
  *  - reports every other failure as a [DownloadException]
- *  - [resumeFromBytes]: bytes already sitting in [destination] from a
- *    previous, paused attempt at this SAME id. An implementation that can
- *    honor it appends starting there (e.g. an HTTP Range request); one that
- *    cannot MUST still produce a complete, correct file — falling back to a
- *    full restart is always a valid (if less efficient) implementation of
- *    this contract, never a correctness bug. [DownloadFileResult.bytesDownloaded]
- *    is always the file's real FINAL size, resumed or not.
  */
 interface FileDownloader {
     suspend fun download(
         url: String,
         destination: File,
-        resumeFromBytes: Long = 0L,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadFileResult
 }

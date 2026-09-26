@@ -98,24 +98,13 @@ fun requiresRemovalConfirmation(status: DownloadStatus): Boolean =
     status == DownloadStatus.COMPLETED
 
 /**
- * Rows that offer the cancel action. PAUSED is included: the repository
- * fully supports cancelling a paused row (it just has no live coroutine
- * job to cancel — see DownloadRepositoryImpl.cancel's PAUSED branch), and a
- * paused download the user no longer wants should still be abandonable
- * without first resuming it.
+ * Rows that offer the cancel action. PAUSED has no live job to cancel
+ * (nothing in production produces it yet), so no inert cancel button is
+ * rendered for it (Phase 7 fix round, Qwen PAUSED note — option B, the
+ * smallest safe change).
  */
 fun offersCancelAction(status: DownloadStatus): Boolean =
-    status == DownloadStatus.QUEUED ||
-        status == DownloadStatus.DOWNLOADING ||
-        status == DownloadStatus.PAUSED
-
-/** Rows that offer the pause action: only a live transfer can be paused. */
-fun offersPauseAction(status: DownloadStatus): Boolean =
     status == DownloadStatus.QUEUED || status == DownloadStatus.DOWNLOADING
-
-/** Rows that offer the resume action: only a paused row can be resumed. */
-fun offersResumeAction(status: DownloadStatus): Boolean =
-    status == DownloadStatus.PAUSED
 
 /**
  * Rows that offer the retry action (Phase 9): the repository re-queues both

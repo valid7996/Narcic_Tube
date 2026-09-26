@@ -25,14 +25,13 @@ class RoutingFileDownloader @Inject constructor(
     override suspend fun download(
         url: String,
         destination: File,
-        resumeFromBytes: Long,
         onProgress: (DownloadProgress) -> Unit,
     ): DownloadFileResult {
         val pageUrl = YtDlpUrl.parse(url).pageUrl
         return if (YtDlpUrl.providerOf(pageUrl) != MediaProvider.UNKNOWN) {
-            ytDlp.download(url, destination, resumeFromBytes, onProgress)
+            ytDlp.download(url, destination, onProgress)
         } else {
-            direct.download(url, destination, resumeFromBytes, onProgress)
+            direct.download(url, destination, onProgress)
         }
     }
 }
