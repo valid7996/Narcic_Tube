@@ -67,16 +67,11 @@ open class YtDlpEngine @Inject constructor(
         warmUpStarted = true
         try {
             initialize()
-            if (AUTO_UPDATE_ON_LAUNCH) {
-                try {
-                    withContext(Dispatchers.IO) {
-                        YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
-                    }
-                } catch (e: Throwable) {
-                    if (e is CancellationException) throw e
-                    // Offline / GitHub rate-limited: keep the bundled version.
-                }
-            }
+            // AUTO-UPDATE قطع شد (v1.1.2): yt-dlpهای جدیدِ ۲۰۲۶ برای یوتیوب/
+            // اینستاگرام/تیک‌تاک درخواست ورود می‌دهند (PO token / bot check) —
+            // نسخه باندل‌شده داخل APK همین الان هم بدون کوکی دانلود می‌کند
+            // و کارکرد آن «قطعی» است، نه وابسته به اینکه آخرین آپدیت گیت‌هاب
+            // موفق شده یا نه. اگر روزی آپدیت لازم شد، این پرچم برگردد.
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
         } finally {
@@ -174,7 +169,7 @@ open class YtDlpEngine @Inject constructor(
 
     private companion object {
         /** Keeps bundled yt-dlp current (YouTube changes often). Flip to false to disable. */
-        const val AUTO_UPDATE_ON_LAUNCH = true
+        const val AUTO_UPDATE_ON_LAUNCH = false
         const val WARM_UP_WAIT_MS = 20_000L
         const val DENO_LIBRARY_NAME = "libdeno.so"
     }
