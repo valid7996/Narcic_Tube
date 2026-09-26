@@ -7,6 +7,7 @@ import android.provider.DocumentsContract
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.narcictub.app.data.local.MediaStoreFileWriter
+import dagger.hilt.android.lifecycle.HiltViewModel
 import com.narcictub.app.domain.repository.SettingsRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -27,7 +28,7 @@ import javax.inject.Inject
  * saves items through the REAL [MediaStoreFileWriter] publish pipeline —
  * honoring the user's storage location settings. Nothing is simulated.
  */
-@javax.inject.Singleton
+@HiltViewModel
 class StatusesViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     settingsRepository: SettingsRepository,
