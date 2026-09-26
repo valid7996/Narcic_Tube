@@ -22,7 +22,13 @@ Direct media links keep using the original HTTP downloader.
 - **YouTube needs a JavaScript runtime** for full format support (yt-dlp >= 2025.11.12). Without one, some
   formats are missing and downloads can fail with HTTP 403. Optional fix: put an Android build of Deno at
   `app/src/main/jniLibs/arm64-v8a/libdeno.so` (~88 MB); the engine then passes `--js-runtimes deno:<path>`.
-- **Instagram** often requires a login. Import a browser `cookies.txt` in Settings.
+- **Instagram** often requires a login for yt-dlp's own extraction path (rate-limiting / bot checks, or
+  a photo post with no video stream). Import a browser `cookies.txt` in Settings for the most reliable
+  coverage. When yt-dlp fails, `InstagramPhotoResolver.resolveFallbackMedia` automatically retries the
+  post's public `og:video`/`og:image` metadata (and its `/embed/captioned/` page) — the same unauthenticated
+  surface Instagram serves for link previews and website embeds — so many public posts and Reels still
+  download without any cookies. This is a best-effort fallback, not a guarantee: private, removed, or
+  more aggressively gated posts still need the imported cookies.
 - Only progressive/merged single items are downloaded (no playlists).
 
 ### Licensing

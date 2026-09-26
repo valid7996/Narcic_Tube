@@ -57,6 +57,45 @@ class InstagramPhotoResolver @Inject constructor(
         result
     }
 
+    /**
+     * Same no-login technique as [resolvePhotoPost], but for the VIDEO case:
+     * public Reels/videos expose their real CDN mp4 URL either as
+     * `og:video` / `og:video:secure_url` meta tags on the post page, or as a
+     * `<video src="...">` element on the /embed/captioned/ page — Instagram
+     * serves both to make link-preview and website-embed rendering work
+     * without a session. This is the same public surface third-party
+     * Instagram downloaders read; nothing here is a login bypass, and any
+     * post that genuinely needs a session (private/removed) still yields
+     * null so the original typed error surfaces unchanged.
+     */
+    suspend fun resolveVideoPost(pageUrl: String): MediaInfo? = withContext(Dispatchers.IO) {
+        val candidates = buildList {
+            add(pageUrl)
+            canonicalPostUrl(pageUrl)?.let { add(it + "embed/captioned/") }
+        }.distinct()
+
+        var result: MediaInfo? = null
+        for (url in candidates) {
+            if (result != null) break
+            result = runCatching {
+                fetchHtml(url)?.let { html ->
+                    (parseOgVideo(html) ?: parseEmbedVideo(html))?.let { buildVideoMediaInfo(pageUrl, it) }
+                }
+            }.getOrNull()
+        }
+        result
+    }
+
+    /**
+     * Combined fallback used by [com.narcictub.app.data.ytdlp.YtDlpExtractor]
+     * once yt-dlp itself fails on an Instagram URL: try the video reading
+     * first (a failed post is far more often a gated Reel/video than a
+     * photo), then the photo reading. First hit wins; null means both the
+     * primary extractor and both fallbacks agree the post needs a login.
+     */
+    suspend fun resolveFallbackMedia(pageUrl: String): MediaInfo? =
+        resolveVideoPost(pageUrl) ?: resolvePhotoPost(pageUrl)
+
     private fun fetchHtml(url: String): String? {
         val connection = URL(url).openConnection() as HttpsURLConnection
         try {
@@ -88,6 +127,23 @@ class InstagramPhotoResolver @Inject constructor(
             MediaVariant(
                 downloadUrl = og.imageUrl,
                 mimeType = "image/jpeg",
+            ),
+        ),
+    )
+
+    private fun buildVideoMediaInfo(pageUrl: String, og: OgVideo): MediaInfo = MediaInfo(
+        sourceUrl = pageUrl,
+        title = og.title ?: "Instagram video",
+        host = "instagram.com",
+        provider = MediaProvider.INSTAGRAM,
+        mimeType = "video/mp4",
+        thumbnailUrl = og.thumbnailUrl,
+        isDirectFile = true,
+        downloadUrl = og.videoUrl,
+        variants = listOf(
+            MediaVariant(
+                downloadUrl = og.videoUrl,
+                mimeType = "video/mp4",
             ),
         ),
     )
@@ -134,6 +190,55 @@ class InstagramPhotoResolver @Inject constructor(
         val imageUrl = decodeEntities(raw)
         if (!imageUrl.startsWith("https://")) return null
         return OgMedia(imageUrl, null)
+    }
+
+    internal data class OgVideo(val videoUrl: String, val title: String?, val thumbnailUrl: String? = null)
+
+    /**
+     * Pure parse (unit-tested): `og:video:secure_url` is preferred (it is
+     * always https on Instagram); plain `og:video` is the fallback and is
+     * only accepted when it is itself https, since some pages emit an http
+     * copy alongside the secure one. `og:image` doubles as the thumbnail
+     * when present. Attribute order (property-first vs content-first) is
+     * handled the same way as [parseOgImage].
+     */
+    internal fun parseOgVideo(html: String): OgVideo? {
+        fun metaContent(property: String): String? {
+            val propertyFirst = Regex(
+                """<meta[^>]+property=["']$property["'][^>]*content=["']([^"']+)["']""",
+                RegexOption.IGNORE_CASE,
+            ).find(html)?.groupValues?.get(1)
+            val contentFirst = Regex(
+                """<meta[^>]+content=["']([^"']+)["'][^>]*property=["']$property["']""",
+                RegexOption.IGNORE_CASE,
+            ).find(html)?.groupValues?.get(1)
+            return (propertyFirst ?: contentFirst)?.let(::decodeEntities)
+        }
+
+        val secureUrl = metaContent("og:video:secure_url")?.takeIf { it.startsWith("https://") }
+        val plainUrl = metaContent("og:video")?.takeIf { it.startsWith("https://") }
+        val videoUrl = secureUrl ?: plainUrl ?: return null
+        val title = metaContent("og:title")?.takeIf { it.isNotBlank() }
+        val thumbnailUrl = metaContent("og:image")?.takeIf { it.startsWith("https://") }
+        return OgVideo(videoUrl, title, thumbnailUrl)
+    }
+
+    /**
+     * صفحه embed اینستاگرام برای ویدیو/ریلز معمولاً یک تگ
+     * <video src="..."> عمومی دارد که بدون لاگین بارگذاری می‌شود.
+     */
+    internal fun parseEmbedVideo(html: String): OgVideo? {
+        val raw = Regex(
+            """<video[^>]+src=["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE,
+        ).find(html)?.groupValues?.get(1) ?: return null
+        val videoUrl = decodeEntities(raw)
+        if (!videoUrl.startsWith("https://")) return null
+        val poster = Regex(
+            """<video[^>]+poster=["']([^"']+)["']""",
+            RegexOption.IGNORE_CASE,
+        ).find(html)?.groupValues?.get(1)?.let(::decodeEntities)?.takeIf { it.startsWith("https://") }
+        return OgVideo(videoUrl, null, poster)
     }
 
     private fun decodeEntities(value: String): String = value

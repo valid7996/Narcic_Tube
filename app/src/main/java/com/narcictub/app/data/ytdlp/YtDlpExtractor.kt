@@ -39,19 +39,27 @@ class YtDlpExtractor @Inject constructor(
             Result.success(YtDlpInfoParser.parse(pageUrl, provider, raw))
         } catch (e: CancellationException) {
             throw e
-        } catch (e: MediaResolveException) {
-            // Instagram PHOTO posts: yt-dlp demands a login for them (it sees
-            // no video stream) — so ANY Instagram extraction failure gets an
-            // og:image photo attempt before giving up. If the page exposes
-            // the photo, it resolves; otherwise the original typed error
-            // surfaces unchanged.
-            if (provider == MediaProvider.INSTAGRAM) {
-                val photo = instagramPhotoResolver.resolvePhotoPost(pageUrl)
-                if (photo != null) return Result.success(photo)
-            }
-            Result.failure(e)
         } catch (e: Exception) {
-            Result.failure(MediaResolveException.ExtractionFailed(provider, YtDlpErrors.reasonOf(e)))
+            // yt-dlp fails Instagram two different ways, and BOTH land here
+            // as plain exceptions, not just the "successful JSON with no
+            // video stream" case: most often the request itself is refused
+            // before any JSON comes back (login wall / rate-limit / bot
+            // check in yt-dlp's stderr — a generic RuntimeException), and
+            // less often yt-dlp returns valid JSON with zero formats for a
+            // photo post (YtDlpInfoParser throws a typed
+            // MediaResolveException then). Either way gets a no-login
+            // fallback attempt before giving up: the post's public
+            // og:video/og:image metadata (or its /embed/captioned/ page),
+            // which Instagram serves unauthenticated for link previews and
+            // website embeds. Skipped when the engine itself never started
+            // (YtDlpEngineException) — no webpage fetch can fix that.
+            if (provider == MediaProvider.INSTAGRAM && e !is YtDlpEngineException) {
+                val fallback = instagramPhotoResolver.resolveFallbackMedia(pageUrl)
+                if (fallback != null) return Result.success(fallback)
+            }
+            val typed = e as? MediaResolveException
+                ?: MediaResolveException.ExtractionFailed(provider, YtDlpErrors.reasonOf(e))
+            Result.failure(typed)
         }
     }
 }
