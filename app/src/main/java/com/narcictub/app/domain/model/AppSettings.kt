@@ -23,6 +23,8 @@ data class AppSettings(
     val customDownloadFolderUri: String? = null,
     /** SAF tree URI of the picked WhatsApp statuses folder (status saver). */
     val whatsappStatusFolderUri: String? = null,
+    /** DoH endpoint (https URL) used to resolve DNS for app HTTPS calls; null = system DNS. */
+    val dohUrl: String? = null,
     val wifiOnly: Boolean = true,
     val concurrentDownloads: Int = 3,
     val notificationsEnabled: Boolean = true,

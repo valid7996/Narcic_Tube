@@ -31,6 +31,7 @@ private object SettingsKeys {
     val DOWNLOAD_LOCATION = stringPreferencesKey("download_location")
     val CUSTOM_FOLDER_URI = stringPreferencesKey("custom_folder_uri")
     val WA_STATUS_FOLDER_URI = stringPreferencesKey("wa_status_folder_uri")
+    val DO_H_URL = stringPreferencesKey("doh_url")
     val WIFI_ONLY = booleanPreferencesKey("wifi_only")
     val CONCURRENT_DOWNLOADS = intPreferencesKey("concurrent_downloads")
     val NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
@@ -65,6 +66,8 @@ class SettingsRepositoryImpl @Inject constructor(
                     ?.takeIf { it.isNotBlank() },
                 whatsappStatusFolderUri = prefs[SettingsKeys.WA_STATUS_FOLDER_URI]
                     ?.takeIf { it.isNotBlank() },
+                dohUrl = prefs[SettingsKeys.DO_H_URL]
+                    ?.takeIf { it.isNotBlank() },
                 wifiOnly = prefs[SettingsKeys.WIFI_ONLY] ?: true,
                 concurrentDownloads = (prefs[SettingsKeys.CONCURRENT_DOWNLOADS] ?: 3)
                     .coerceIn(MIN_CONCURRENT, MAX_CONCURRENT),
@@ -91,6 +94,13 @@ class SettingsRepositoryImpl @Inject constructor(
         dataStore.edit { prefs ->
             if (uri.isNullOrBlank()) prefs.remove(SettingsKeys.WA_STATUS_FOLDER_URI)
             else prefs[SettingsKeys.WA_STATUS_FOLDER_URI] = uri
+        }
+    }
+
+    override suspend fun setDohUrl(url: String?) {
+        dataStore.edit { prefs ->
+            if (url.isNullOrBlank()) prefs.remove(SettingsKeys.DO_H_URL)
+            else prefs[SettingsKeys.DO_H_URL] = url
         }
     }
 

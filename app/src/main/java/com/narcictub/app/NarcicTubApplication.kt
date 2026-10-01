@@ -1,6 +1,7 @@
 package com.narcictub.app
 
 import android.app.Application
+import com.narcictub.app.data.network.DoHNetwork
 import com.narcictub.app.data.ytdlp.YtDlpEngine
 import com.narcictub.app.domain.usecase.RecoverInterruptedDownloadsUseCase
 import com.narcictub.app.notify.DownloadNotificationController
@@ -33,7 +34,11 @@ class NarcicTubApplication : Application() {
     @Inject lateinit var downloadNotifications: DownloadNotificationController
 
     // yt-dlp / Python / ffmpeg runtime for YouTube + Instagram.
+    // yt-dlp / Python / ffmpeg runtime for YouTube + Instagram.
     @Inject lateinit var ytDlpEngine: YtDlpEngine
+
+    // DNS-over-HTTPS (اختیاری): نصب سراسری از طریق تنظیمات
+    @Inject lateinit var dohNetwork: DoHNetwork
 
     override fun onCreate() {
         super.onCreate()
@@ -43,5 +48,6 @@ class NarcicTubApplication : Application() {
         // Extract the bundled runtime and refresh yt-dlp in the background so
         // the first YouTube/Instagram request isn't the one that pays for it.
         downloadWorkScope.launch { ytDlpEngine.warmUp() }
+        dohNetwork.start()
     }
 }

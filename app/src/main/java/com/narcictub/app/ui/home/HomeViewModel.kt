@@ -9,7 +9,10 @@ import com.narcictub.app.domain.model.MediaVariant
 import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
 import com.narcictub.app.domain.usecase.InvalidUrlException
+import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.domain.usecase.ResolveUrlUseCase
+import com.narcictub.app.domain.usecase.SearchYouTubeUseCase
+import com.narcictub.app.data.ytdlp.YtDlpEngineException
 import com.narcictub.app.ui.common.ResolveErrorMessages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -36,6 +39,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val resolveUrl: ResolveUrlUseCase,
     private val enqueueDownload: EnqueueDownloadUseCase,
+    private val searchYouTube: SearchYouTubeUseCase,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -57,6 +61,9 @@ class HomeViewModel @Inject constructor(
                 // selection (stale-selection protection).
                 selectedVariantUrl = null,
                 errorMessage = null,
+                // HONEY: ورودی غیر-URL = حالت جستجوی یوتیوب
+                isSearchMode = !newUrl.startsWith("http"),
+                searchResults = emptyList(),
             )
         }
     }
@@ -215,6 +222,51 @@ class HomeViewModel @Inject constructor(
     /** Resets the one-shot "queued" toast/scaffold flag after UI consumed it. */
     fun onQueuedMessageShown() {
         _uiState.update { it.copy(queuedSuccessfully = false) }
+    }
+
+    /**
+     * HONEY — جستجوی یوتیوب: ورودیِ غیر-URL از موتور ytsearch می‌رود و
+     * نتایج واقعی (عنوان/کانال/مدت/تعداد بازدید) برمی‌گردد.
+     */
+    fun onSearch() {
+        val query = _uiState.value.url.trim()
+        if (query.isBlank() || _uiState.value.isSearching) return
+        _uiState.update { it.copy(isSearching = true, errorMessage = null) }
+        viewModelScope.launch {
+            val result = searchYouTube(query)
+            _uiState.update { state ->
+                result.fold(
+                    onSuccess = { items ->
+                        state.copy(isSearching = false, searchResults = items)
+                    },
+                    onFailure = { error ->
+                        state.copy(
+                            isSearching = false,
+                            searchResults = emptyList(),
+                            errorMessage = if (error is YtDlpEngineException) {
+                                "The download engine couldn't start. Restart the app and try again."
+                            } else {
+                                "Search failed. Check your connection and try again."
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+
+    /** انتخاب یک نتیجه → لینک را می‌گذارد و همان resolve استاندارد را اجرا می‌کند. */
+    fun onPickResult(watchUrl: String) {
+        _uiState.update {
+            it.copy(
+                url = watchUrl,
+                isUrlValid = true,
+                searchResults = emptyList(),
+                isSearchMode = false,
+                errorMessage = null,
+            )
+        }
+        onResolve()
     }
 
     /**

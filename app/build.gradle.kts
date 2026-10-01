@@ -184,6 +184,8 @@ dependencies {
     // Bundles Python + yt-dlp (GPL-3.0 — see README "Licensing") and ffmpeg
     // (needed to merge separate video + audio streams).
     implementation(libs.youtubedl.library)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     implementation(libs.youtubedl.ffmpeg)
 
     // Unit tests

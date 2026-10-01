@@ -1,6 +1,8 @@
 package com.narcictub.app.data.ytdlp
 
 import android.content.Context
+import com.narcictub.app.domain.model.MediaInfo
+import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
@@ -108,14 +110,38 @@ open class YtDlpEngine @Inject constructor(
         request.addOption("--playlist-items", "1")
         request.addOption("--socket-timeout", "30")
         applyCommonOptions(request)
+        return runDumpJson(request, "narcictub-resolve-")
+    }
 
-        val processId = "narcictub-resolve-" + System.nanoTime()
+    /**
+     * HONEY — جستجوی یوتیوب از طریق خود موتور (`ytsearchN:query`): بدون API
+     * key و بدون سرویس جانبی. فهرست تخت (flat playlist) برمی‌گردد.
+     */
+    open suspend fun search(query: String, limit: Int): List<YoutubeSearchItem> {
+        awaitReady()
+        val request = YoutubeDLRequest("ytsearch$limit:${query.trim()}")
+        request.addOption("--flat-playlist")
+        request.addOption("--dump-single-json")
+        request.addOption("--no-warnings")
+        request.addOption("--socket-timeout", "30")
+        applyCommonOptions(request)
+        val raw = try {
+            runDumpJson(request, "narcictub-search-")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw YtDlpEngineException(e)
+        }
+        return YtDlpSearchParser.parse(raw)
+    }
+
+    private suspend fun runDumpJson(request: YoutubeDLRequest, processIdBase: String): String {
+        val processId = processIdBase + System.nanoTime()
         val ignoreProgress: (Float, Long, String) -> Unit = { _, _, _ -> }
-        try {
-            val response = runInterruptible(Dispatchers.IO) {
+        return try {
+            runInterruptible(Dispatchers.IO) {
                 YoutubeDL.getInstance().execute(request, processId, ignoreProgress)
-            }
-            return response.out
+            }.out
         } catch (e: CancellationException) {
             runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }
             throw e

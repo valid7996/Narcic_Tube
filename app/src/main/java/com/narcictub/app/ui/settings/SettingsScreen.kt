@@ -35,8 +35,10 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,6 +58,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.data.ytdlp.YtDlpCookies
 import com.narcictub.app.domain.model.AppSettings
+import com.narcictub.app.data.network.DoHNetwork
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import com.narcictub.app.domain.model.ThemeMode
 import com.narcictub.app.ui.theme.Hexagon
 import com.narcictub.app.ui.theme.HoneyGradient
@@ -164,6 +168,14 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     CookiesRow(epoch = cookiesEpoch, onShowLogin = { showInstagramLogin = true })
                 }
+            }
+
+            // ─── NETWORK & DNS ───
+            SettingsCard("Network & DNS") {
+                DohRow(
+                    current = state.dohUrl,
+                    onSave = viewModel::onDohUrlSelected,
+                )
             }
 
             // ─── WHATSAPP STATUS ───
@@ -474,6 +486,91 @@ private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
                 modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
             )
         }
+    }
+}
+
+/**
+ * DNS over HTTPS row: the user can paste any DoH endpoint (or tap a
+ * preset). When set, EVERY https call the app makes resolves through it —
+ * poisoned system DNS stops breaking downloads. Honest scope note: the
+ * yt-dlp engine is a separate process and uses the system resolver.
+ */
+@Composable
+private fun DohRow(current: String?, onSave: (String?) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    var text by remember(current) { mutableStateOf(current.orEmpty()) }
+    var status by remember { mutableStateOf<String?>(null) }
+
+    SettingRow(
+        title = "DNS over HTTPS",
+        subtitle = when {
+            current.isNullOrBlank() -> "Off — system DNS is used"
+            else -> current
+        },
+        action = {
+            OutlinedPill(text = if (current.isNullOrBlank()) "Enable" else "Save") {
+                val trimmed = text.trim()
+                when {
+                    trimmed.isEmpty() -> {
+                        onSave(null)
+                        status = "DoH disabled."
+                    }
+                    DoHNetwork.isValidEndpoint(trimmed) -> {
+                        onSave(trimmed)
+                        status = "DoH enabled."
+                    }
+                    else -> status = "Enter a valid https://… DoH URL."
+                }
+            }
+        },
+    )
+    Text(
+        text = "Applies to the app's own downloads (not the yt-dlp process).",
+        style = MaterialTheme.typography.bodySmall,
+        color = colors.onSurfaceVariant,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+    )
+    OutlinedTextField(
+        value = text,
+        onValueChange = { text = it },
+        singleLine = true,
+        placeholder = { Text("https://dns.google/dns-query", style = MaterialTheme.typography.bodySmall) },
+        textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.onSurface),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = MaterialTheme.shapes.small,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = colors.primary,
+            unfocusedBorderColor = colors.outlineVariant,
+        ),
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DoHNetwork.PRESETS.forEach { (url, label) ->
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(colors.surfaceContainerHigh)
+                    .border(1.dp, colors.outlineVariant, RoundedCornerShape(999.dp))
+                    .clickable { text = url }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurface)
+            }
+        }
+    }
+    status?.let {
+        Text(
+            text = it,
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, bottom = 12.dp),
+        )
     }
 }
 

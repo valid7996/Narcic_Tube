@@ -1,6 +1,7 @@
 package com.narcictub.app.ui.home
 
 import com.narcictub.app.domain.model.MediaInfo
+import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.domain.model.MediaVariant
 
 /**
@@ -24,6 +25,10 @@ data class HomeUiState(
     val selectedVariantUrl: String? = null,
     val isDownloading: Boolean = false,
     val queuedSuccessfully: Boolean = false,
+    /** HONEY: یوتیوب سرچ — وقتی ورودی URL نبود، دکمه Search فعال است. */
+    val isSearchMode: Boolean = false,
+    val searchResults: List<YoutubeSearchItem> = emptyList(),
+    val isSearching: Boolean = false,
     val errorMessage: String? = null,
 ) {
     /**

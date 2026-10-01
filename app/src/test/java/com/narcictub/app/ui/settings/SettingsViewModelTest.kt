@@ -8,6 +8,7 @@ import com.narcictub.app.domain.usecase.ObserveSettingsUseCase
 import com.narcictub.app.domain.usecase.SetConcurrentDownloadsUseCase
 import com.narcictub.app.domain.usecase.SetCustomDownloadFolderUseCase
 import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
+import com.narcictub.app.domain.usecase.SetDohUrlUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
 import com.narcictub.app.domain.usecase.SetWhatsappStatusFolderUseCase
 import java.io.IOException
@@ -80,6 +81,11 @@ class SettingsViewModelTest {
             state.value = state.value.copy(whatsappStatusFolderUri = uri)
         }
 
+        override suspend fun setDohUrl(url: String?) {
+            if (failWrites) throw IOException("boom")
+            state.value = state.value.copy(dohUrl = url)
+        }
+
         override suspend fun setWifiOnly(enabled: Boolean) {}
         override suspend fun setNotificationsEnabled(enabled: Boolean) {}
 
@@ -98,6 +104,7 @@ class SettingsViewModelTest {
         setDownloadLocation = SetDownloadLocationUseCase(repository),
         setCustomDownloadFolder = SetCustomDownloadFolderUseCase(repository),
         setWhatsappStatusFolder = SetWhatsappStatusFolderUseCase(repository),
+        setDohUrl = SetDohUrlUseCase(repository),
         setConcurrentDownloads = SetConcurrentDownloadsUseCase(repository),
     )
 

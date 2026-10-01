@@ -1,11 +1,14 @@
 package com.narcictub.app.ui.home
 
 import app.cash.turbine.test
+import io.mockk.mockk
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.resolver.MediaResolver
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
+import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.domain.usecase.ResolveUrlUseCase
+import com.narcictub.app.domain.usecase.SearchYouTubeUseCase
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -43,6 +46,14 @@ class HomeViewModelTest {
             received = url
             return result
         }
+    }
+
+    /** Fake YtDlpEngine for the search use case: never actually searches. */
+    private inner class FakeSearchEngine : com.narcictub.app.data.ytdlp.YtDlpEngine(mockk(relaxed = true)) {
+        override suspend fun search(
+            query: String,
+            limit: Int,
+        ): List<com.narcictub.app.domain.model.YoutubeSearchItem> = emptyList()
     }
 
     /** Resolver that never returns until [gate] completes — for cancel tests. */
@@ -92,6 +103,7 @@ class HomeViewModelTest {
     private fun viewModel() = HomeViewModel(
         resolveUrl = ResolveUrlUseCase(resolver),
         enqueueDownload = EnqueueDownloadUseCase(downloadRepo),
+        searchYouTube = SearchYouTubeUseCase(FakeSearchEngine()),
     )
 
     private fun directFileInfo(url: String = "https://example.com/x") = MediaInfo(
@@ -281,6 +293,7 @@ class HomeViewModelTest {
         val vm = HomeViewModel(
             resolveUrl = ResolveUrlUseCase(gatedResolver),
             enqueueDownload = EnqueueDownloadUseCase(downloadRepo),
+        searchYouTube = SearchYouTubeUseCase(FakeSearchEngine()),
         )
         vm.onUrlChange("https://example.com/slow")
         vm.onResolve()

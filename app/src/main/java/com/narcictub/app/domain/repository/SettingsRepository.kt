@@ -23,6 +23,9 @@ interface SettingsRepository {
     /** Persists (or clears with null) the WhatsApp statuses folder tree URI. */
     suspend fun setWhatsappStatusFolder(uri: String?)
 
+    /** Persists (or clears with null) the DNS-over-HTTPS endpoint. */
+    suspend fun setDohUrl(url: String?)
+
     suspend fun setWifiOnly(enabled: Boolean)
 
     suspend fun setConcurrentDownloads(count: Int)

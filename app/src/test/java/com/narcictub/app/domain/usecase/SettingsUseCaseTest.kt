@@ -42,6 +42,9 @@ class SettingsUseCaseTest {
         override suspend fun setWhatsappStatusFolder(uri: String?) {
             if (fail) throw IOException("boom")
         }
+        override suspend fun setDohUrl(url: String?) {
+            if (fail) throw IOException("boom")
+        }
         override suspend fun setWifiOnly(enabled: Boolean) {
             if (fail) throw IOException("boom")
         }

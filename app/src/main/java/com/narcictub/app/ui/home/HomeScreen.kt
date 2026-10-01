@@ -81,6 +81,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.narcictub.app.domain.model.MediaInfo
 import com.narcictub.app.domain.model.MediaVariant
+import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.ui.theme.Hexagon
 import com.narcictub.app.ui.theme.HoneyGradient
 import com.narcictub.app.ui.theme.InkOnHoney
@@ -132,6 +133,8 @@ fun HomeScreen(
         onDownload = requestNotificationsAndDownload,
         onVariantSelected = viewModel::onVariantSelected,
         onQueuedMessageShown = viewModel::onQueuedMessageShown,
+        onSearch = viewModel::onSearch,
+        onPickResult = viewModel::onPickResult,
         modifier = modifier,
     )
 }
@@ -145,6 +148,8 @@ private fun HomeContent(
     onDownload: () -> Unit,
     onVariantSelected: (String) -> Unit,
     onQueuedMessageShown: () -> Unit,
+    onSearch: () -> Unit,
+    onPickResult: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val clipboard = LocalClipboardManager.current
@@ -303,13 +308,23 @@ private fun HomeContent(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    HoneyPillButton(
-                        text = if (state.isResolving) "Resolving…" else "Resolve",
-                        icon = Icons.Filled.Search,
-                        modifier = Modifier.weight(1.35f),
-                        enabled = state.isUrlValid && !state.isResolving,
-                        onClick = onResolve,
-                    )
+                    if (state.isSearchMode) {
+                        HoneyPillButton(
+                            text = if (state.isSearching) "Searching…" else "Search",
+                            icon = Icons.Filled.Search,
+                            modifier = Modifier.weight(1.35f),
+                            enabled = !state.isSearching && state.url.isNotBlank(),
+                            onClick = onSearch,
+                        )
+                    } else {
+                        HoneyPillButton(
+                            text = if (state.isResolving) "Resolving…" else "Resolve",
+                            icon = Icons.Filled.Search,
+                            modifier = Modifier.weight(1.35f),
+                            enabled = state.isUrlValid && !state.isResolving,
+                            onClick = onResolve,
+                        )
+                    }
                     HoneyPillButton(
                         text = if (state.isDownloading) "Queuing…" else "Download",
                         icon = Icons.Filled.Download,
@@ -331,6 +346,20 @@ private fun HomeContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+
+        if (state.isSearching) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        if (state.searchResults.isNotEmpty()) {
+            Text(
+                text = "Search results — tap to pick a format:",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            state.searchResults.forEach { item ->
+                SearchResultRow(item = item, onClick = { onPickResult(item.watchUrl) })
+            }
         }
 
         state.resolvedMedia?.let { info ->
@@ -698,6 +727,8 @@ private fun HomeContentEmptyPreview() {
             onClear = {},
             onResolve = {},
             onDownload = {},
+            onSearch = {},
+            onPickResult = {},
             onQueuedMessageShown = {},
         )
     }
@@ -717,6 +748,8 @@ private fun HomeContentActivePreview() {
             onClear = {},
             onResolve = {},
             onDownload = {},
+            onSearch = {},
+            onPickResult = {},
             onQueuedMessageShown = {},
         )
     }
@@ -788,7 +821,46 @@ private fun HomeContentResolvedPreview() {
             onClear = {},
             onResolve = {},
             onDownload = {},
+            onSearch = {},
+            onPickResult = {},
             onQueuedMessageShown = {},
+        )
+    }
+}
+
+/** HONEY — یک نتیجه جستجوی یوتیوب: بندانگشتی + عنوان + کانال + مدت. */
+@Composable
+private fun SearchResultRow(item: YoutubeSearchItem, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .clickable { onClick() }
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MediaThumbnail(url = item.thumbnailUrl ?: "", modifier = Modifier.padding(end = 10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = listOfNotNull(
+                    item.channel,
+                    item.durationSeconds?.let { formatDuration(it) },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Icon(
+            imageVector = Icons.Filled.PlayCircle,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
         )
     }
 }
