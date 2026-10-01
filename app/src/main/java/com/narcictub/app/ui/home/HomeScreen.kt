@@ -308,23 +308,13 @@ private fun HomeContent(
                 }
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (state.isSearchMode) {
-                        HoneyPillButton(
-                            text = if (state.isSearching) "Searching…" else "Search",
-                            icon = Icons.Filled.Search,
-                            modifier = Modifier.weight(1.35f),
-                            enabled = !state.isSearching && state.url.isNotBlank(),
-                            onClick = onSearch,
-                        )
-                    } else {
-                        HoneyPillButton(
-                            text = if (state.isResolving) "Resolving…" else "Resolve",
-                            icon = Icons.Filled.Search,
-                            modifier = Modifier.weight(1.35f),
-                            enabled = state.isUrlValid && !state.isResolving,
-                            onClick = onResolve,
-                        )
-                    }
+                    HoneyPillButton(
+                        text = if (state.isResolving) "Resolving…" else "Resolve",
+                        icon = Icons.Filled.Search,
+                        modifier = Modifier.weight(1.35f),
+                        enabled = state.isUrlValid && !state.isResolving,
+                        onClick = onResolve,
+                    )
                     HoneyPillButton(
                         text = if (state.isDownloading) "Queuing…" else "Download",
                         icon = Icons.Filled.Download,
@@ -348,19 +338,6 @@ private fun HomeContent(
             )
         }
 
-        if (state.isSearching) {
-            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
-        if (state.searchResults.isNotEmpty()) {
-            Text(
-                text = "Search results — tap to pick a format:",
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            state.searchResults.forEach { item ->
-                SearchResultRow(item = item, onClick = { onPickResult(item.watchUrl) })
-            }
-        }
 
         state.resolvedMedia?.let { info ->
             ResolvedMediaCard(
@@ -762,7 +739,7 @@ private fun HomeContentActivePreview() {
  * failures degrade to the placeholder, never an error.
  */
 @Composable
-private fun MediaThumbnail(url: String, modifier: Modifier = Modifier) {
+internal fun MediaThumbnail(url: String, modifier: Modifier = Modifier) {
     if (!url.startsWith("https://")) return
     var bitmap by remember(url) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(url) {
@@ -824,43 +801,6 @@ private fun HomeContentResolvedPreview() {
             onSearch = {},
             onPickResult = {},
             onQueuedMessageShown = {},
-        )
-    }
-}
-
-/** HONEY — یک نتیجه جستجوی یوتیوب: بندانگشتی + عنوان + کانال + مدت. */
-@Composable
-private fun SearchResultRow(item: YoutubeSearchItem, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .clickable { onClick() }
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        MediaThumbnail(url = item.thumbnailUrl ?: "", modifier = Modifier.padding(end = 10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = listOfNotNull(
-                    item.channel,
-                    item.durationSeconds?.let { formatDuration(it) },
-                ).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Icon(
-            imageVector = Icons.Filled.PlayCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
         )
     }
 }

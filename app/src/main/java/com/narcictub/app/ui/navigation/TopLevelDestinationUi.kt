@@ -2,9 +2,11 @@ package com.narcictub.app.ui.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -12,7 +14,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Display metadata for a top-level destination: label + selected/unselected
  * icons (Material filled/outlined pairs). History lives INSIDE the
- * Downloads screen (hive folder up, history down) — only three tabs.
+ * Downloads screen (hive folder up, history down). The Search tab is the
+ * dedicated YouTube search + playback screen.
  */
 data class TopLevelDestinationUi(
     val destination: Destination,
@@ -27,6 +30,12 @@ val topLevelDestinationUiList: List<TopLevelDestinationUi> = listOf(
         label = "Home",
         selectedIcon = Icons.Filled.Home,
         unselectedIcon = Icons.Outlined.Home,
+    ),
+    TopLevelDestinationUi(
+        destination = Destination.Search,
+        label = "Search",
+        selectedIcon = Icons.Filled.Search,
+        unselectedIcon = Icons.Outlined.Search,
     ),
     TopLevelDestinationUi(
         destination = Destination.Downloads,

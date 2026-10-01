@@ -26,6 +26,7 @@ import com.narcictub.app.ui.downloads.DownloadsViewModel
 import com.narcictub.app.ui.theme.honeycomb
 import com.narcictub.app.ui.home.HomeScreen
 import com.narcictub.app.ui.playback.PlaybackScreen
+import com.narcictub.app.ui.search.SearchScreen
 import com.narcictub.app.ui.settings.SettingsScreen
 import com.narcictub.app.ui.status.StatusesScreen
 
@@ -95,6 +96,9 @@ fun NarcicTubApp(
             },
         ) {
             composable<Destination.Home> { HomeScreen() }
+            composable<Destination.Search> {
+                SearchScreen()
+            }
             composable<Destination.Downloads> {
                 // تاریخچه داخل همین صفحه است: پوشه کندو بالا، تاریخچه پایین
                 DownloadsScreen(

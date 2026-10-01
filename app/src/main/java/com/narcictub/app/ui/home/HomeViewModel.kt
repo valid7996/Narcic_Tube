@@ -9,10 +9,8 @@ import com.narcictub.app.domain.model.MediaVariant
 import com.narcictub.app.domain.resolver.MediaResolveException
 import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
 import com.narcictub.app.domain.usecase.InvalidUrlException
-import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.domain.usecase.ResolveUrlUseCase
 import com.narcictub.app.domain.usecase.SearchYouTubeUseCase
-import com.narcictub.app.data.ytdlp.YtDlpEngineException
 import com.narcictub.app.ui.common.ResolveErrorMessages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -61,9 +59,6 @@ class HomeViewModel @Inject constructor(
                 // selection (stale-selection protection).
                 selectedVariantUrl = null,
                 errorMessage = null,
-                // HONEY: ورودی غیر-URL = حالت جستجوی یوتیوب
-                isSearchMode = !newUrl.startsWith("http"),
-                searchResults = emptyList(),
             )
         }
     }
@@ -225,8 +220,8 @@ class HomeViewModel @Inject constructor(
     }
 
     /**
-     * HONEY — جستجوی یوتیوب: ورودیِ غیر-URL از موتور ytsearch می‌رود و
-     * نتایج واقعی (عنوان/کانال/مدت/تعداد بازدید) برمی‌گردد.
+     * HONEY — جستجوی یوتیوب (صفحه Search از این تابع استفاده نمی‌کند؛ اینجا
+     * صرفاً ورودی غیر-URL روی Home را پوشش می‌دهد): موتور ytsearch.
      */
     fun onSearch() {
         val query = _uiState.value.url.trim()
@@ -236,18 +231,12 @@ class HomeViewModel @Inject constructor(
             val result = searchYouTube(query)
             _uiState.update { state ->
                 result.fold(
-                    onSuccess = { items ->
-                        state.copy(isSearching = false, searchResults = items)
-                    },
+                    onSuccess = { items -> state.copy(isSearching = false, searchResults = items) },
                     onFailure = { error ->
                         state.copy(
                             isSearching = false,
                             searchResults = emptyList(),
-                            errorMessage = if (error is YtDlpEngineException) {
-                                "The download engine couldn't start. Restart the app and try again."
-                            } else {
-                                "Search failed. Check your connection and try again."
-                            },
+                            errorMessage = error.message ?: "Search failed.",
                         )
                     },
                 )
@@ -255,19 +244,12 @@ class HomeViewModel @Inject constructor(
         }
     }
 
-    /** انتخاب یک نتیجه → لینک را می‌گذارد و همان resolve استاندارد را اجرا می‌کند. */
+    /** انتخاب نتیجه جستجو → همان مسیر resolve استاندارد. */
     fun onPickResult(watchUrl: String) {
-        _uiState.update {
-            it.copy(
-                url = watchUrl,
-                isUrlValid = true,
-                searchResults = emptyList(),
-                isSearchMode = false,
-                errorMessage = null,
-            )
-        }
+        onUrlChange(watchUrl)
         onResolve()
     }
+
 
     /**
      * Safe error mapping — shared with the Share download screen so the

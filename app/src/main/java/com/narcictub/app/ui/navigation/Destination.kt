@@ -14,6 +14,10 @@ sealed interface Destination {
     @Serializable
     data object Downloads : Destination
 
+    /** HONEY — YouTube search: real InnerTube search + playback + download. */
+    @Serializable
+    data object Search : Destination
+
     /**
      * PHASE 11: in-app playback of ONE completed, available local media
      * record. Not a top-level tab — the bottom bar hides on this route.

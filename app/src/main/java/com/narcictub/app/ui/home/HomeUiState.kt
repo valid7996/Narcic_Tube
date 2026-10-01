@@ -1,8 +1,8 @@
 package com.narcictub.app.ui.home
 
 import com.narcictub.app.domain.model.MediaInfo
-import com.narcictub.app.domain.model.YoutubeSearchItem
 import com.narcictub.app.domain.model.MediaVariant
+import com.narcictub.app.domain.model.YoutubeSearchItem
 
 /**
  * UI state for the Home URL form (Phase 20: variant selection added).
@@ -25,11 +25,11 @@ data class HomeUiState(
     val selectedVariantUrl: String? = null,
     val isDownloading: Boolean = false,
     val queuedSuccessfully: Boolean = false,
-    /** HONEY: یوتیوب سرچ — وقتی ورودی URL نبود، دکمه Search فعال است. */
+    val errorMessage: String? = null,
+    /** HONEY: ورودی غیر-URL = حالت جستجوی یوتیوب (دکمه Search). */
     val isSearchMode: Boolean = false,
     val searchResults: List<YoutubeSearchItem> = emptyList(),
     val isSearching: Boolean = false,
-    val errorMessage: String? = null,
 ) {
     /**
      * The selected variant, resolved by identity against the CURRENT

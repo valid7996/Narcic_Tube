@@ -75,6 +75,31 @@ class DoHNetwork @Inject constructor(
         scope.launch { dohUrl.collect { install(it) } }
     }
 
+    private val baseClient = OkHttpClient.Builder().build()
+
+    @Volatile private var cachedClient: OkHttpClient? = null
+    @Volatile private var cachedEndpoint: String? = null
+
+    /**
+     * OkHttpClient for consumers that make their own calls (YouTube client,
+     * resolver fetches). DNS = DnsOverHttps when configured, else system.
+     */
+    @Synchronized
+    fun client(): OkHttpClient {
+        val endpoint = dohUrl.value
+        if (cachedClient != null && cachedEndpoint == endpoint) return cachedClient!!
+        cachedEndpoint = endpoint
+        cachedClient = if (endpoint.isNullOrBlank()) {
+            baseClient
+        } else {
+            runCatching {
+                val doh = buildDnsOverHttps(endpoint) ?: return@runCatching baseClient
+                baseClient.newBuilder().dns(doh).build()
+            }.getOrDefault(baseClient)
+        }
+        return cachedClient!!
+    }
+
     private fun buildDnsOverHttps(endpoint: String): DnsOverHttps? = runCatching {
         val base = OkHttpClient.Builder().build()
         DnsOverHttps.Builder()
