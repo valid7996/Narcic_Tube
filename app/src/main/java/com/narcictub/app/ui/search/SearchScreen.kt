@@ -6,6 +6,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.widget.MediaController
 import android.widget.VideoView
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,10 +46,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
@@ -160,7 +164,8 @@ fun SearchScreen(
                 items(results, key = { it.id }) { item ->
                     SearchResultRow(
                         item = item,
-                        onPlay = { viewModel.play(context, item) },
+                        loadThumb = viewModel::loadThumbnail,
+                        onPlay = { viewModel.play(item) },
                         onDownload = { viewModel.download(item) },
                     )
                 }
@@ -191,6 +196,7 @@ fun SearchScreen(
         PlayerDialog(
             title = playbackState.title,
             streamUrl = playbackState.streamUrl,
+            description = playbackState.description,
             onDismiss = { viewModel.onPlaybackClosed() },
         )
     }
@@ -198,7 +204,7 @@ fun SearchScreen(
 
 /** پخش‌کننده تمام‌صفحه: VideoView + کنترلر سیستم (استریم mp4 مستقیم). */
 @Composable
-private fun PlayerDialog(title: String, streamUrl: String, onDismiss: () -> Unit) {
+private fun PlayerDialog(title: String, streamUrl: String, description: String?, onDismiss: () -> Unit) {
     val context = LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
@@ -255,6 +261,30 @@ private fun PlayerDialog(title: String, streamUrl: String, onDismiss: () -> Unit
                     .fillMaxWidth()
                     .padding(16.dp),
             )
+            description?.let { desc ->
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                )
+            }
+            description?.let { desc ->
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                )
+            }
         }
     }
 }
@@ -262,6 +292,7 @@ private fun PlayerDialog(title: String, streamUrl: String, onDismiss: () -> Unit
 @Composable
 private fun SearchResultRow(
     item: YoutubeSearchItem,
+    loadThumb: suspend (String) -> android.graphics.Bitmap?,
     onPlay: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -273,7 +304,7 @@ private fun SearchResultRow(
                 .padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MediaThumbnail(url = item.thumbnailUrl ?: "", modifier = Modifier.padding(end = 4.dp))
+            DoHThumbnail(url = item.thumbnailUrl ?: "", loadThumb = loadThumb, modifier = Modifier.padding(end = 10.dp))
             Column(Modifier.weight(1f).padding(start = 8.dp)) {
                 Text(
                     text = item.title,
@@ -311,6 +342,46 @@ private fun SearchResultRow(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * بندانگشتی واقعی از مسیر DoH — حتی وقتی DNS سیستم فیلتر باشد، تصویر
+ * نشان داده می‌شود (نه فقط اسم). نبود آن → آیکون نوع.
+ */
+@Composable
+private fun DoHThumbnail(
+    url: String,
+    loadThumb: suspend (String) -> android.graphics.Bitmap?,
+    modifier: Modifier = Modifier,
+) {
+    var bitmap by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    LaunchedEffect(url) {
+        if (url.isNotBlank()) bitmap = loadThumb(url)
+    }
+    Box(
+        modifier = modifier
+            .size(96.dp)
+            .height(60.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        val loaded = bitmap
+        if (loaded != null) {
+            androidx.compose.foundation.Image(
+                bitmap = loaded.asImageBitmap(),
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }

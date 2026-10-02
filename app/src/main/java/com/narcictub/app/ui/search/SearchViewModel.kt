@@ -1,9 +1,10 @@
 package com.narcictub.app.ui.search
 
 import android.content.Context
-import androidx.lifecycle.ViewModel
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.narcictub.app.data.network.YouTubeClient
 import com.narcictub.app.domain.model.YoutubeSearchItem
@@ -11,10 +12,10 @@ import com.narcictub.app.domain.usecase.EnqueueDownloadUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -28,9 +29,13 @@ class SearchViewModel @Inject constructor(
     private val enqueueDownload: EnqueueDownloadUseCase,
 ) : ViewModel() {
 
-    data class Playback(val title: String, val streamUrl: String)
+    data class Playback(
+        val title: String,
+        val streamUrl: String,
+        val description: String? = null,
+    )
 
-    var query by androidx.compose.runtime.mutableStateOf("")
+    var query by mutableStateOf("")
         private set
 
     private val _results = MutableStateFlow<List<YoutubeSearchItem>>(emptyList())
@@ -76,8 +81,8 @@ class SearchViewModel @Inject constructor(
         }
     }
 
-    /** پخش: آدرس استریم مستقیم از InnerTube ANDROID client گرفته می‌شود. */
-    fun play(context: Context, item: YoutubeSearchItem) {
+    /** پخش: آدرس استریم مستقیم از InnerTube (IOS → ANDROID) گرفته می‌شود. */
+    fun play(item: YoutubeSearchItem) {
         if (_preparing.value != null) return
         _preparing.value = item
         viewModelScope.launch {
@@ -88,7 +93,7 @@ class SearchViewModel @Inject constructor(
             }
             _preparing.value = null
             if (stream != null) {
-                _playback.value = Playback(stream.title ?: item.title, stream.url)
+                _playback.value = Playback(stream.title ?: item.title, stream.url, stream.description)
             } else {
                 _message.value = "Direct playback isn't available for this video — try Download."
             }
@@ -103,10 +108,14 @@ class SearchViewModel @Inject constructor(
                 onSuccess = { "Added to the hive · ${item.title}" },
                 onFailure = { "Couldn't queue that download." },
             )
-            kotlinx.coroutines.delay(2600)
+            delay(2600)
             _message.value = null
         }
     }
+
+    /** بندانگشتی از مسیر DoH (وقتی DNS سیستم فیلتر باشد کار می‌کند). */
+    suspend fun loadThumbnail(url: String): android.graphics.Bitmap? =
+        youTubeClient.fetchThumbnail(url)
 
     fun onMessageShown() {
         _message.value = null
