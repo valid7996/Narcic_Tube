@@ -66,8 +66,17 @@ class YtDlpCookiesTest {
         every { context.filesDir } returns filesDir
         val assets = mockk<AssetManager>()
         if (assetText != null) {
-            every { assets.open(any(), any()) } returns assetText.byteInputStream()
+            // Production calls the 1-arg open(String); stub it AND the 2-arg
+            // overload (they are separate Java overloads — stubbing only the
+            // 2-arg one leaves the 1-arg call unstubbed, which is exactly
+            // what made CI fail: the unstubbed call throws, the catch in
+            // readDefaultAsset swallows it, and seeding silently never runs).
+            // answers { } gives every call a FRESH stream — the restore test
+            // opens the asset twice and a shared stream would be exhausted.
+            every { assets.open(any()) } answers { assetText.byteInputStream() }
+            every { assets.open(any(), any()) } answers { assetText.byteInputStream() }
         } else {
+            every { assets.open(any()) } throws FileNotFoundException("no asset")
             every { assets.open(any(), any()) } throws FileNotFoundException("no asset")
         }
         every { context.assets } returns assets
