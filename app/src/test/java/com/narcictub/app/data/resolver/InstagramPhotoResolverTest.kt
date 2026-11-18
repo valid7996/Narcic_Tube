@@ -154,4 +154,73 @@ class InstagramVideoFallbackTest {
     fun `embed video parse rejects non https`() {
         assertNull(resolver.parseEmbedVideo("""<video src="http://x/y.mp4"></video>"""))
     }
+
+    // ===== v1.3.4 — media-info API =====
+
+    @Test
+    fun `shortcode converts to the numeric media id`() {
+        // World record egg: verified against yt-dlp's _id_to_pk.
+        assertEquals("1949525278281554174", resolver.shortcodeToPk("BsOGulcndj-"))
+    }
+
+    @Test
+    fun `shortcode is extracted from share links`() {
+        assertEquals(
+            "BsOGulcndj-",
+            resolver.shortcodeOf("https://www.instagram.com/p/BsOGulcndj-/?igsh=abc"),
+        )
+        assertNull(resolver.shortcodeOf("https://www.instagram.com/explore/"))
+    }
+
+    @Test
+    fun `media info photo json yields the largest image`() {
+        val raw = """{"status":"ok","items":[{
+            "pk":"1949525278281554174","media_type":1,
+            "caption":{"text":"Let's set a world record together"},
+            "image_versions2":{"candidates":[
+                {"width":480,"height":480,"url":"https://scontent.cdninstagram.com/small.jpg"},
+                {"width":584,"height":584,"url":"https://scontent.cdninstagram.com/large.jpg"}
+            ]}
+        }]}"""
+        val og = resolver.parseMediaInfoPhoto(raw)
+        assertNotNull(og)
+        assertEquals("https://scontent.cdninstagram.com/large.jpg", og!!.imageUrl)
+        assertEquals("Let's set a world record together", og.title)
+    }
+
+    @Test
+    fun `media info video only item yields null`() {
+        val raw = """{"status":"ok","items":[{
+            "pk":"1","media_type":2,
+            "video_versions":[{"url":"https://scontent.cdninstagram.com/v.mp4"}],
+            "image_versions2":{"candidates":[
+                {"width":480,"height":480,"url":"https://scontent.cdninstagram.com/poster.jpg"}
+            ]}
+        }]}"""
+        assertNull(resolver.parseMediaInfoPhoto(raw))
+    }
+
+    @Test
+    fun `media info carousel yields the first photo item`() {
+        val raw = """{"status":"ok","items":[{
+            "pk":"1","media_type":8,
+            "carousel_media":[
+                {"media_type":2,"video_versions":[{"url":"https://x/v.mp4"}],
+                 "image_versions2":{"candidates":[
+                     {"width":480,"height":480,"url":"https://scontent.cdninstagram.com/video-poster.jpg"}]}},
+                {"media_type":1,
+                 "image_versions2":{"candidates":[
+                     {"width":1080,"height":1080,"url":"https://scontent.cdninstagram.com/photo.jpg"}]}}
+            ]
+        }]}"""
+        val og = resolver.parseMediaInfoPhoto(raw)
+        assertNotNull(og)
+        assertEquals("https://scontent.cdninstagram.com/photo.jpg", og!!.imageUrl)
+    }
+
+    @Test
+    fun `media info json without items yields null`() {
+        assertNull(resolver.parseMediaInfoPhoto("""{"status":"fail","message":"login required"}"""))
+        assertNull(resolver.parseMediaInfoPhoto("not json"))
+    }
 }
