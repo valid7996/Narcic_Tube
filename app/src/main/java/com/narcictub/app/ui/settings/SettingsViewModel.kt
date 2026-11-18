@@ -2,6 +2,8 @@ package com.narcictub.app.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.narcictub.app.data.ytdlp.EngineUpdateStatus
+import com.narcictub.app.data.ytdlp.YtDlpEngine
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
@@ -40,6 +42,9 @@ data class SettingsUiState(
     val concurrentDownloads: Int = AppSettings.MIN_CONCURRENT_DOWNLOADS,
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
+    /** v1.3.2 — download-engine version + last update outcome (see YtDlpEngine). */
+    val engineVersion: String? = null,
+    val engineUpdateStatus: EngineUpdateStatus = EngineUpdateStatus.NotAttempted,
 )
 
 @HiltViewModel
@@ -51,6 +56,7 @@ class SettingsViewModel @Inject constructor(
     private val setWhatsappStatusFolder: SetWhatsappStatusFolderUseCase,
     private val setDohUrl: SetDohUrlUseCase,
     private val setConcurrentDownloads: SetConcurrentDownloadsUseCase,
+    private val engine: YtDlpEngine,
 ) : ViewModel() {
 
     /** One-shot safe message for a failed write; cleared on the next success. */
@@ -80,8 +86,12 @@ class SettingsViewModel @Inject constructor(
         }
 
     val uiState: StateFlow<SettingsUiState> =
-        combine(loadedState, writeError, loadFailed) { state, writeErr, loadErr ->
-            state.copy(errorMessage = writeErr ?: if (loadErr) LOAD_ERROR else null)
+        combine(loadedState, writeError, loadFailed, engine.updateStatus) { state, writeErr, loadErr, engineStatus ->
+            state.copy(
+                errorMessage = writeErr ?: if (loadErr) LOAD_ERROR else null,
+                engineVersion = engine.currentVersion(),
+                engineUpdateStatus = engineStatus,
+            )
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
@@ -113,6 +123,15 @@ class SettingsViewModel @Inject constructor(
 
     /** Out-of-range values are rejected by the use case — safe message only. */
     fun onConcurrentDownloadsSelected(count: Int) = launchWrite { setConcurrentDownloads(count) }
+
+    /**
+     * v1.3.2 — manual engine update from Settings. The outcome lands in
+     * [SettingsUiState.engineUpdateStatus] through the engine's status flow;
+     * the engine itself never throws (except cancellation).
+     */
+    fun onUpdateEngineClicked() {
+        viewModelScope.launch { engine.updateEngine() }
+    }
 
     private fun launchWrite(write: suspend () -> Result<Unit>) {
         viewModelScope.launch {

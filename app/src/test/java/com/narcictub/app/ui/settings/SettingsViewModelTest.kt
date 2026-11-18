@@ -1,5 +1,7 @@
 package com.narcictub.app.ui.settings
 
+import com.narcictub.app.data.ytdlp.EngineUpdateStatus
+import com.narcictub.app.data.ytdlp.YtDlpEngine
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.domain.model.DownloadLocation
 import com.narcictub.app.domain.model.ThemeMode
@@ -11,6 +13,10 @@ import com.narcictub.app.domain.usecase.SetDownloadLocationUseCase
 import com.narcictub.app.domain.usecase.SetDohUrlUseCase
 import com.narcictub.app.domain.usecase.SetThemeModeUseCase
 import com.narcictub.app.domain.usecase.SetWhatsappStatusFolderUseCase
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -98,6 +104,9 @@ class SettingsViewModelTest {
 
     private lateinit var repository: FakeSettingsRepository
 
+    private lateinit var engine: YtDlpEngine
+    private lateinit var engineStatusFlow: MutableStateFlow<EngineUpdateStatus>
+
     private fun viewModel() = SettingsViewModel(
         observeSettings = ObserveSettingsUseCase(repository),
         setThemeMode = SetThemeModeUseCase(repository),
@@ -106,12 +115,18 @@ class SettingsViewModelTest {
         setWhatsappStatusFolder = SetWhatsappStatusFolderUseCase(repository),
         setDohUrl = SetDohUrlUseCase(repository),
         setConcurrentDownloads = SetConcurrentDownloadsUseCase(repository),
+        engine = engine,
     )
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         repository = FakeSettingsRepository()
+        engineStatusFlow = MutableStateFlow(EngineUpdateStatus.NotAttempted)
+        engine = mockk<YtDlpEngine>().apply {
+            every { updateStatus } returns engineStatusFlow
+            every { currentVersion() } returns null
+        }
     }
 
     @After
@@ -278,5 +293,32 @@ class SettingsViewModelTest {
     fun `theme mode projection defaults to system while loading`() {
         val vm = viewModel()
         assertEquals(ThemeMode.SYSTEM, vm.themeMode.value)
+    }
+
+    @Test
+    fun `engine update status flows into ui state`() = runTest {
+        every { engine.currentVersion() } returns "2026.10.26"
+        engineStatusFlow.value = EngineUpdateStatus.Updated("2026.10.26")
+        val vm = viewModel()
+        val job = collect(vm)
+        advanceUntilIdle()
+        job.cancel()
+
+        assertEquals(EngineUpdateStatus.Updated("2026.10.26"), vm.uiState.value.engineUpdateStatus)
+        assertEquals("2026.10.26", vm.uiState.value.engineVersion)
+    }
+
+    @Test
+    fun `manual engine update delegates to the engine`() = runTest {
+        coEvery { engine.updateEngine() } returns EngineUpdateStatus.UpToDate("2026.10.26")
+        val vm = viewModel()
+        val job = collect(vm)
+        advanceUntilIdle()
+
+        vm.onUpdateEngineClicked()
+        advanceUntilIdle()
+        job.cancel()
+
+        coVerify(exactly = 1) { engine.updateEngine() }
     }
 }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -55,6 +56,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.narcictub.app.data.ytdlp.EngineUpdateStatus
 import com.narcictub.app.data.ytdlp.YtDlpCookies
 import com.narcictub.app.domain.model.AppSettings
 import com.narcictub.app.data.network.DoHNetwork
@@ -167,6 +169,15 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     CookiesRow(epoch = cookiesEpoch, onShowLogin = { showInstagramLogin = true })
                 }
+            }
+
+            // ─── DOWNLOAD ENGINE ───
+            SettingsCard("Download Engine") {
+                EngineRow(
+                    version = state.engineVersion,
+                    status = state.engineUpdateStatus,
+                    onUpdate = viewModel::onUpdateEngineClicked,
+                )
             }
 
             // ─── NETWORK & DNS ───
@@ -425,6 +436,43 @@ private fun ConcurrentDownloadsRow(
                     inactiveTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
                 ),
             )
+        },
+    )
+}
+
+/**
+ * v1.3.2 — the yt-dlp engine and its last update, out in the open. The
+ * startup update used to fail silently (offline / GitHub rate-limited),
+ * leaving the bundled 2025 engine to fail every Instagram link with a
+ * generic error. Now the version and the outcome are visible, and the user
+ * can retry the update by hand (needs internet / VPN for GitHub).
+ */
+@Composable
+private fun EngineRow(
+    version: String?,
+    status: EngineUpdateStatus,
+    onUpdate: () -> Unit,
+) {
+    val subtitle = when (status) {
+        EngineUpdateStatus.NotAttempted -> "yt-dlp ${version ?: "bundled version"} · update not checked yet"
+        EngineUpdateStatus.Checking -> "Checking for engine updates…"
+        is EngineUpdateStatus.UpToDate -> "yt-dlp ${status.version ?: "bundled version"} · up to date"
+        is EngineUpdateStatus.Updated -> "Updated to yt-dlp ${status.version ?: "latest"}"
+        EngineUpdateStatus.Failed -> "Update failed — check internet / VPN and try again"
+    }
+    SettingRow(
+        title = "Download Engine",
+        subtitle = subtitle,
+        action = {
+            if (status is EngineUpdateStatus.Checking) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(end = 8.dp),
+                )
+            } else {
+                OutlinedPill(text = "Update") { onUpdate() }
+            }
         },
     )
 }

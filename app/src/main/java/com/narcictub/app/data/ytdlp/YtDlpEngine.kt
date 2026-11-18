@@ -10,6 +10,10 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +22,24 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/**
+ * Outcome of a yt-dlp engine update. The version is the tag stored by
+ * youtubedl-android (null when the bundled engine was never updated).
+ *
+ * v1.3.2 — the startup update used to fail silently (offline / GitHub
+ * rate-limited: the unauthenticated releases API allows 60 requests/hour
+ * per IP), leaving the bundled 2025 engine to fail every Instagram link
+ * with a generic error. The outcome is now recorded and surfaced in
+ * Settings, so a failed update is visible instead of invisible.
+ */
+sealed interface EngineUpdateStatus {
+    data object NotAttempted : EngineUpdateStatus
+    data object Checking : EngineUpdateStatus
+    data class UpToDate(val version: String?) : EngineUpdateStatus
+    data class Updated(val version: String?) : EngineUpdateStatus
+    data object Failed : EngineUpdateStatus
+}
 
 /**
  * The ONLY class that touches the youtubedl-android library (a wrapper that
@@ -45,6 +67,14 @@ open class YtDlpEngine @Inject constructor(
 
     @Volatile private var warmUpStarted = false
     private val warmUpDone = CompletableDeferred<Unit>()
+
+    /** Last engine-update outcome; observed by Settings. Starts unattempted. */
+    private val _updateStatus = MutableStateFlow<EngineUpdateStatus>(EngineUpdateStatus.NotAttempted)
+    open val updateStatus: StateFlow<EngineUpdateStatus> = _updateStatus.asStateFlow()
+
+    /** yt-dlp version tag known to the app (null = bundled version, never updated). */
+    open fun currentVersion(): String? =
+        runCatching { YoutubeDL.getInstance().version(context) }.getOrNull()
 
     /** Initializes yt-dlp + ffmpeg once. Throws [YtDlpEngineException] on failure (retried next call). */
     open suspend fun initialize() {
@@ -74,18 +104,46 @@ open class YtDlpEngine @Inject constructor(
             // پست‌ها)؛ موتور آپدیت‌شده ویدیو/ریلز اینستاگرام را بدون کوکی
             // می‌گیرد. اولین باز شدن با اینترنت/VPN طول می‌کشد؛ اگر آپدیت
             // ناموفق بود، همان نسخه باندل‌شده استفاده می‌شود.
-            try {
-                withContext(Dispatchers.IO) {
-                    YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
-                }
-            } catch (e: Throwable) {
-                if (e is CancellationException) throw e
-                // Offline / GitHub rate-limited: keep the bundled version.
-            }
+            // v1.3.2: the outcome is recorded in [updateStatus] (and retried
+            // once) instead of vanishing — see [updateEngine].
+            updateEngine()
         } catch (e: Throwable) {
             if (e is CancellationException) throw e
         } finally {
             warmUpDone.complete(Unit)
+        }
+    }
+
+    /**
+     * Runs the stable-channel yt-dlp update and records the outcome in
+     * [updateStatus]. Never throws (except cancellation): a failed attempt is
+     * retried once for transient network blips, then reported as [Failed] so
+     * Settings can show it and the user can retry by hand.
+     */
+    open suspend fun updateEngine(): EngineUpdateStatus {
+        _updateStatus.value = EngineUpdateStatus.Checking
+        var result = attemptUpdate()
+        if (result is EngineUpdateStatus.Failed) {
+            delay(UPDATE_RETRY_DELAY_MS)
+            result = attemptUpdate()
+        }
+        _updateStatus.value = result
+        return result
+    }
+
+    private suspend fun attemptUpdate(): EngineUpdateStatus {
+        return try {
+            val status = withContext(Dispatchers.IO) {
+                YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel._STABLE)
+            }
+            val version = currentVersion()
+            if (status == YoutubeDL.UpdateStatus.DONE) EngineUpdateStatus.Updated(version)
+            else EngineUpdateStatus.UpToDate(version)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            // Offline / GitHub rate-limited: keep the bundled version.
+            EngineUpdateStatus.Failed
         }
     }
 
@@ -206,5 +264,7 @@ open class YtDlpEngine @Inject constructor(
         const val AUTO_UPDATE_ON_LAUNCH = true
         const val WARM_UP_WAIT_MS = 20_000L
         const val DENO_LIBRARY_NAME = "libdeno.so"
+        /** One retry for transient update failures (v1.3.2). */
+        const val UPDATE_RETRY_DELAY_MS = 3_000L
     }
 }
