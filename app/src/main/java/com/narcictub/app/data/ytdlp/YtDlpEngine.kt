@@ -158,17 +158,36 @@ open class YtDlpEngine @Inject constructor(
      * Runs `yt-dlp --dump-single-json` and returns the raw JSON (stdout).
      * Throws on failure; the exception text is yt-dlp's stderr and must only
      * be classified (YtDlpErrors), never displayed.
+     *
+     * v1.3.5 — a bad or stale cookies.txt must not break downloads that
+     * work fine without a session: when the attempt WITH cookies fails,
+     * retry once WITHOUT them. The session is only ever an addition for
+     * age-restricted/private media, never a requirement for public
+     * content, so the anonymous retry is strictly more permissive.
+     * Cancellation is never retried, and without a cookies file there is
+     * nothing to retry — the first failure surfaces unchanged.
      */
     open suspend fun dumpJson(url: String): String {
         awaitReady()
+        return try {
+            runDumpJson(buildResolveRequest(url, useCookies = true), "narcictub-resolve-")
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!YtDlpCookies.exists(context)) throw e
+            runDumpJson(buildResolveRequest(url, useCookies = false), "narcictub-resolve-")
+        }
+    }
+
+    private fun buildResolveRequest(url: String, useCookies: Boolean): YoutubeDLRequest {
         val request = YoutubeDLRequest(url)
         request.addOption("--dump-single-json")
         request.addOption("--no-warnings")
         request.addOption("--no-playlist")
         request.addOption("--playlist-items", "1")
         request.addOption("--socket-timeout", "30")
-        applyCommonOptions(request)
-        return runDumpJson(request, "narcictub-resolve-")
+        applyCommonOptions(request, useCookies)
+        return request
     }
 
     /**
@@ -212,6 +231,10 @@ open class YtDlpEngine @Inject constructor(
      * null lets yt-dlp choose). Blocks until the child process ends;
      * coroutine cancellation kills the process. Progress is reported as
      * (percent, raw yt-dlp line).
+     *
+     * v1.3.5 — same cookie fallback as [dumpJson]: a failing attempt WITH
+     * cookies is retried once WITHOUT them, so a bad cookies.txt cannot
+     * break a download that the resolve step already cleared.
      */
     open suspend fun download(
         url: String,
@@ -221,6 +244,24 @@ open class YtDlpEngine @Inject constructor(
         onProgress: (percent: Float, line: String) -> Unit,
     ) {
         awaitReady()
+        try {
+            runDownload(url, formatSelector, outputDir, processId, onProgress, useCookies = true)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (!YtDlpCookies.exists(context)) throw e
+            runDownload(url, formatSelector, outputDir, processId, onProgress, useCookies = false)
+        }
+    }
+
+    private suspend fun runDownload(
+        url: String,
+        formatSelector: String?,
+        outputDir: File,
+        processId: String,
+        onProgress: (percent: Float, line: String) -> Unit,
+        useCookies: Boolean,
+    ) {
         val request = YoutubeDLRequest(url)
         request.addOption("--no-playlist")
         request.addOption("--playlist-items", "1")
@@ -228,7 +269,7 @@ open class YtDlpEngine @Inject constructor(
         request.addOption("--socket-timeout", "30")
         request.addOption("-o", File(outputDir, "media.%(ext)s").absolutePath)
         if (formatSelector != null) request.addOption("-f", formatSelector)
-        applyCommonOptions(request)
+        applyCommonOptions(request, useCookies)
 
         val callback: (Float, Long, String) -> Unit = { percent, _, line -> onProgress(percent, line) }
         try {
@@ -241,7 +282,7 @@ open class YtDlpEngine @Inject constructor(
         }
     }
 
-    private fun applyCommonOptions(request: YoutubeDLRequest) {
+    private fun applyCommonOptions(request: YoutubeDLRequest, useCookies: Boolean = true) {
         // No --extractor-args here, deliberately: yt-dlp's default client set
         // returns the full https DASH format list (all heights + audio-only),
         // and logs in are not required for regular videos. Alternative
@@ -249,8 +290,10 @@ open class YtDlpEngine @Inject constructor(
         // return HLS-only streams, which collapse the variant list to the
         // single 360p muxed format and fail to download (PO-token gating).
         // Optional login session (Settings → import cookies.txt) still
-        // applies on top for age-restricted/private media.
-        if (YtDlpCookies.exists(context)) {
+        // applies on top for age-restricted/private media. [useCookies]
+        // exists for the v1.3.5 fallback: when a with-cookies attempt
+        // fails, the caller retries the same request without the session.
+        if (useCookies && YtDlpCookies.exists(context)) {
             request.addOption("--cookies", YtDlpCookies.file(context).absolutePath)
         }
         // Optional JavaScript runtime for YouTube (see README). Only passed when the
