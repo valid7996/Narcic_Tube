@@ -482,19 +482,30 @@ private fun EngineRow(
  * or bot-checked YouTube videos can only be fetched by a logged-in browser;
  * importing that browser's cookies.txt (Netscape format) lets the downloader
  * do the same. The file stays in app-private storage and is never backed up.
+ *
+ * v1.3.6 — the app ships with a bundled default session (YouTube + Instagram)
+ * that is installed on first use; Settings shows "Default session active"
+ * while it is in place. A user import or in-app login replaces it, Remove
+ * deletes it without re-seeding, and "Restore default session" brings it back.
  */
 @Composable
 private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var hasCookies by remember(epoch) { mutableStateOf(YtDlpCookies.exists(context)) }
+    var isDefault by remember(epoch) { mutableStateOf(YtDlpCookies.isDefaultSession(context)) }
     var status by remember(epoch) { mutableStateOf<String?>(null) }
+
+    val refreshCookies = {
+        hasCookies = YtDlpCookies.exists(context)
+        isDefault = YtDlpCookies.isDefaultSession(context)
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             scope.launch {
                 val imported = withContext(Dispatchers.IO) { YtDlpCookies.import(context, uri) }
-                hasCookies = YtDlpCookies.exists(context)
+                refreshCookies()
                 status = if (imported) {
                     "Cookies imported."
                 } else {
@@ -507,7 +518,11 @@ private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
     Column {
         SettingRow(
             title = "YouTube & IG Cookies",
-            subtitle = if (hasCookies) "cookies.txt imported" else "None imported",
+            subtitle = when {
+                hasCookies && isDefault -> "Default session active"
+                hasCookies -> "cookies.txt imported"
+                else -> "None imported"
+            },
             action = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedPill(text = "Log in") { onShowLogin() }
@@ -516,7 +531,7 @@ private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
                     ) {
                         if (hasCookies) {
                             YtDlpCookies.clear(context)
-                            hasCookies = false
+                            refreshCookies()
                             status = "Cookies removed."
                         } else {
                             picker.launch(arrayOf("*/*"))
@@ -525,6 +540,29 @@ private fun CookiesRow(epoch: Int, onShowLogin: () -> Unit) {
                 }
             },
         )
+        if (!hasCookies) {
+            TextButton(
+                onClick = {
+                    scope.launch {
+                        val restored = withContext(Dispatchers.IO) {
+                            YtDlpCookies.restoreDefaultSession(context)
+                        }
+                        refreshCookies()
+                        status = if (restored) {
+                            "Default session restored."
+                        } else {
+                            "Default session is not available."
+                        }
+                    }
+                },
+                modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
+            ) {
+                Text(
+                    text = "Restore default session",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
         status?.let {
             Text(
                 text = it,
