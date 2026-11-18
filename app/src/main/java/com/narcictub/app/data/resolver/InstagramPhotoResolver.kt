@@ -24,7 +24,10 @@ import javax.net.ssl.HttpsURLConnection
  * login; private/removed posts do not, and the resolver returns null so the
  * original typed error surfaces. When the user imported an Instagram
  * cookies.txt in Settings, its cookies are attached to the page request,
- * which covers more posts. Media type is pinned to image/jpeg — og:image on
+ * which covers more posts — but only as a SECOND attempt (v1.3.3): a request
+ * carrying a session gets Instagram's logged-in page, which has no og tags,
+ * so attaching cookies first broke public photo posts that the anonymous
+ * fetch resolves fine. Media type is pinned to image/jpeg — og:image on
  * Instagram is always a JPEG rendition.
  */
 @Singleton
@@ -38,8 +41,10 @@ class InstagramPhotoResolver @Inject constructor(
      *  2. the /embed/captioned/ page (historically exposes the photo without
      *     any login, as an EmbeddedMediaImage <img>)
      * The first hit wins; total failure → null (original error surfaces).
+     * [withCookies] attaches the imported Instagram session (see
+     * [resolveFallbackMedia] for why it is tried second, not first).
      */
-    suspend fun resolvePhotoPost(pageUrl: String): MediaInfo? = withContext(Dispatchers.IO) {
+    suspend fun resolvePhotoPost(pageUrl: String, withCookies: Boolean = true): MediaInfo? = withContext(Dispatchers.IO) {
         val candidates = buildList {
             add(pageUrl)
             canonicalPostUrl(pageUrl)?.let { add(it + "embed/captioned/") }
@@ -49,7 +54,7 @@ class InstagramPhotoResolver @Inject constructor(
         for (url in candidates) {
             if (result != null) break
             result = runCatching {
-                fetchHtml(url)?.let { html ->
+                fetchHtml(url, withCookies)?.let { html ->
                     (parseOgImage(html) ?: parseEmbedImage(html))?.let { buildMediaInfo(pageUrl, it) }
                 }
             }.getOrNull()
@@ -68,7 +73,7 @@ class InstagramPhotoResolver @Inject constructor(
      * post that genuinely needs a session (private/removed) still yields
      * null so the original typed error surfaces unchanged.
      */
-    suspend fun resolveVideoPost(pageUrl: String): MediaInfo? = withContext(Dispatchers.IO) {
+    suspend fun resolveVideoPost(pageUrl: String, withCookies: Boolean = true): MediaInfo? = withContext(Dispatchers.IO) {
         val candidates = buildList {
             add(pageUrl)
             canonicalPostUrl(pageUrl)?.let { add(it + "embed/captioned/") }
@@ -78,7 +83,7 @@ class InstagramPhotoResolver @Inject constructor(
         for (url in candidates) {
             if (result != null) break
             result = runCatching {
-                fetchHtml(url)?.let { html ->
+                fetchHtml(url, withCookies)?.let { html ->
                     (parseOgVideo(html) ?: parseEmbedVideo(html))?.let { buildVideoMediaInfo(pageUrl, it) }
                 }
             }.getOrNull()
@@ -92,11 +97,22 @@ class InstagramPhotoResolver @Inject constructor(
      * first (a failed post is far more often a gated Reel/video than a
      * photo), then the photo reading. First hit wins; null means both the
      * primary extractor and both fallbacks agree the post needs a login.
+     *
+     * v1.3.3 — each reading is tried WITHOUT the session first, then WITH
+     * it. The og surface is public by design, but a request carrying the
+     * imported session gets Instagram's logged-in page, which has no og
+     * tags — so with cookies attached unconditionally, public photo posts
+     * failed ("No downloadable video was found") while the same link
+     * resolved fine anonymously. The cookie attempt stays for posts that
+     * genuinely need a session.
      */
     suspend fun resolveFallbackMedia(pageUrl: String): MediaInfo? =
-        resolveVideoPost(pageUrl) ?: resolvePhotoPost(pageUrl)
+        resolveVideoPost(pageUrl, withCookies = false)
+            ?: resolvePhotoPost(pageUrl, withCookies = false)
+            ?: resolveVideoPost(pageUrl, withCookies = true)
+            ?: resolvePhotoPost(pageUrl, withCookies = true)
 
-    private fun fetchHtml(url: String): String? {
+    private fun fetchHtml(url: String, withCookies: Boolean): String? {
         val connection = URL(url).openConnection() as HttpsURLConnection
         try {
             connection.connectTimeout = TIMEOUT_MS
@@ -107,7 +123,9 @@ class InstagramPhotoResolver @Inject constructor(
                 "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
             )
-            instagramCookieHeader()?.let { connection.setRequestProperty("Cookie", it) }
+            if (withCookies) {
+                instagramCookieHeader()?.let { connection.setRequestProperty("Cookie", it) }
+            }
             return connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
